@@ -1,5 +1,5 @@
 class DataPoint:
-    def __init__(self, t=0, k=1, cp=1, p=10, s=False):
+    def __init__(self, t=0, k=1, cp=1, p=4, s=False):
         self.__k = k
         self.__t = t
         self.__cp = cp

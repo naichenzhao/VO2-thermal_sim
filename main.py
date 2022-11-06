@@ -1,8 +1,6 @@
 import numpy as np
 from tqdm import tqdm
 from matplotlib import pyplot as plt
-
-from datapoint import *
 from utils import *
 
     
@@ -11,10 +9,31 @@ from utils import *
 #  +-------------------------------------------+
  
 X_GRID = 1001
-Y_GRID = 20
-Z_GRID = 20
-r = 1                 
-dt = 1                
+Y_GRID = 40
+Z_GRID = 2
+r = 1
+dt = 1
+
+
+#  +-------------------------------------------+
+#  |        Data point Organization            |
+#  +-------------------------------------------+
+'''
+[t, dx, dy, dz, s, k, cp, p]
+
+    t (0) = temperature
+    dx (1) = d-distance
+    dy (2) = y-distance
+    dz (3) = z-distance
+
+    s (4) = if node is static (1 or 0)
+
+    k (5) = thermal conductivity
+    cp (6) = heat capacity
+    p (7) = density (rho)
+'''
+
+dp_length = 8
 
 
 
@@ -24,24 +43,23 @@ def main():
     #  |           Setup Matrix                    |
     #  +-------------------------------------------+
 
-    mat = np.empty((X_GRID, Y_GRID, Z_GRID), dtype=object)
+    mat = np.empty((X_GRID, Y_GRID, Z_GRID, dp_length))
 
     for i in range(X_GRID):
         for j in range(Y_GRID):
             for k in range(Z_GRID):
-                set_point(mat, (i, j, k), DataPoint())
-
+                set_point(mat, (i, j, k), make_point())
+    
     next_points = set_mat(mat, (100, 100), ((0, 0, 0), (1000, 0, 0)))
 
 
     #  +-------------------------------------------+
     #  |              Run Loop                     |
     #  +-------------------------------------------+
-    for i in tqdm(range(5)):
+    for i in tqdm(range(1000)):
         next_points = sim(mat, next_points, dt)
 
-
-    print(mat)
+    print(get_mat_temp(mat))
 
 
 
@@ -55,7 +73,7 @@ def set_mat(mat, temps, coordinates):
         curr_loc = coordinates[i]
         curr_temp = temps[i]
 
-        set_point(mat, curr_loc, DataPoint(t = curr_temp, s=True))
+        set_point(mat, curr_loc, make_point(t=curr_temp, s = 1))
 
         r_set.add(curr_loc)
         r_set.update(get_adj(mat, curr_loc))
@@ -69,11 +87,11 @@ def sim(mat, vals, dt):
 
     for p in vals:
         t, points = calculate_dt(mat, p, dt, r)
-        temp_mat[p[0]][p[1]][p[2]] = t 
+        set_point(temp_mat, p, t)
         ret_set.update(points)
 
     for p in vals:
-        set_temp(mat, p, temp_mat[p[0]][p[1]][p[2]])              
+        set_t(get_point(mat, p), get_point(temp_mat, p))
 
     return ret_set
 
