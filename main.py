@@ -8,9 +8,9 @@ from utils import *
 #  |           Constant values                 |
 #  +-------------------------------------------+
  
-X_GRID = 1001
-Y_GRID = 40
-Z_GRID = 2
+X_GRID = 11
+Y_GRID = 1
+Z_GRID = 1
 r = 1
 dt = 1
 
@@ -50,19 +50,16 @@ def main():
             for k in range(Z_GRID):
                 set_point(mat, (i, j, k), make_point())
     
-    next_points = set_mat(mat, (100, 100), ((0, 0, 0), (1000, 0, 0)))
+    next_points = set_mat(mat, (100, 100), ((0, 0, 0), (10, 0, 0)))
 
 
     #  +-------------------------------------------+
     #  |              Run Loop                     |
     #  +-------------------------------------------+
-    for i in tqdm(range(1000)):
+    for i in tqdm(range(3)):
         next_points = sim(mat, next_points, dt)
 
     print(get_mat_temp(mat))
-
-
-
 
 
 
@@ -86,7 +83,7 @@ def sim(mat, vals, dt):
     temp_mat = np.zeros((mat.shape[0], mat.shape[1], mat.shape[2]))
 
     for p in vals:
-        t, points = calculate_dt(mat, p, dt, r)
+        t, points = calculate_dt_l(mat, p, dt)
         set_point(temp_mat, p, t)
         ret_set.update(points)
 

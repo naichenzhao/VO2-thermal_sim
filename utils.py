@@ -63,38 +63,76 @@ def calculate_dt(mat, p, dt, r):
     return new_t, adj_points
 
 
-def get_mat_temp(mat):
-    x_dim = mat.shape[0]
-    y_dim = mat.shape[1]
-    z_dim = mat.shape[2]
-
-    t_mat = np.zeros((x_dim, y_dim, z_dim))
-    space = np.array([*product(range(x_dim), range(y_dim), range(z_dim))])
-
-    for i in space:
-        set_point(t_mat, i, get_t(get_point(mat, i)))
+def calculate_dt_l(mat, p, dt):
+    a_sum = 0
+    b_sum = 0
+    adj_points = get_adj(mat, p)
+    curr_p = get_point(mat, p)
     
-    return t_mat
+    # ---------- Calculate X points ----------
+    print(p_add(p, (1, 0, 0)))
+    if point_exists(mat, p_add(p, (1, 0, 0))):  # Get point for (1, 0, 0)
+        target = get_point(mat, p_add(p, (1, 0, 0)))
+        A = get_dz(curr_p) * get_dy(curr_p) * 4
+        a_sum += (1/A) * (1/(get_dx(curr_p) + get_dx(target)))
+        b_sum += (1/A) * (get_t(target)/(get_dx(curr_p) + get_dx(target)))
+        print(get_dx(curr_p))
+    
+    if point_exists(mat, p_add(p, (-1, 0, 0))):  # Get point for (-1, 0, 0)
+        target = get_point(mat, p_add(p, (-1, 0, 0)))
+        A = get_dz(curr_p) * get_dy(curr_p) * 4
+        a_sum += (1/A) * (1/(get_dx(curr_p) + get_dx(target)))
+        b_sum += (1/A) * (get_t(target)/(get_dx(curr_p) + get_dx(target)))
+
+    # ---------- Calculate Y points ----------
+    if point_exists(mat, p_add(p, (0, 1, 0))):  # Get point for (0, 1, 0)
+        target = get_point(mat, p_add(p, (0, 1, 0)))
+        A = get_dz(curr_p) * get_dx(curr_p) * 4
+        a_sum += (1/A) * (1/(get_dy(curr_p) + get_dy(target)))
+        b_sum += (1/A) * (get_t(target)/(get_dy(curr_p) + get_dy(target)))
+
+    if point_exists(mat, p_add(p, (0, -1, 0))):  # Get point for (0, -1, 0)
+        target = get_point(mat, p_add(p, (0, -1, 0)))
+        A = get_dz(curr_p) * get_dx(curr_p) * 4
+        a_sum += (1/A) * (1/(get_dy(curr_p) + get_dy(target)))
+        b_sum += (1/A) * (get_t(target)/(get_dy(curr_p) + get_dy(target)))
+
+    # ---------- Calculate Z points ----------
+    if point_exists(mat, p_add(p, (0, 0, 1))):  # Get point for (0, 0, 1)
+        target = get_point(mat, p_add(p, (0, 0, 1)))
+        A = get_dx(curr_p) * get_dy(curr_p) * 4
+        a_sum += (1/A) * (1/(get_dz(curr_p) + get_dz(target)))
+        b_sum += (1/A) * (get_t(target)/(get_dz(curr_p) + get_dz(target)))
+    
+    if point_exists(mat, p_add(p, (0, 0, -1))):  # Get point for (0, 0, -1)
+        target = get_point(mat, p_add(p, (0, 0, -1)))
+        A = get_dx(curr_p) * get_dy(curr_p) * 4
+        a_sum += (1/A) * (1/(get_dz(curr_p) + get_dz(target)))
+        b_sum += (1/A) * (get_t(target)/(get_dz(curr_p) + get_dz(target)))
+
+    a = get_t(curr_p) * (1 - (dt/(get_cp(curr_p) * get_p(curr_p))) * a_sum)
+    b = (dt/(get_cp(curr_p) * get_p(curr_p))) * b_sum
+
+    new_t =  a + b
+
+    return new_t, adj_points
+
+    
+
+
+def get_mat_temp(mat):
+    return mat[:,:,:,0]
 
 
 def get_adj(mat, p):
     ret = []
-    x = p[0]
-    y = p[1]
-    z = p[2]
+    mask = [(1,0,0), (0,1,0), (0,0,1)]
 
-    if point_exists(mat, (x+1, y, z)):
-        ret.append((x+1, y, z))
-    if point_exists(mat, (x-1, y, z)):
-        ret.append((x-1, y, z))
-    if point_exists(mat, (x, y+1, z)):
-        ret.append((x, y+1, z))
-    if point_exists(mat, (x, y-1, z)):
-        ret.append((x, y-1, z))
-    if point_exists(mat, (x, y, z+1)):
-        ret.append((x, y, z+1))
-    if point_exists(mat, (x, y, z-1)):
-        ret.append((x, y, z-1))
+    for i in mask:
+        if point_exists(mat, p_add(p, i)):
+            ret.append(p_add(p, i))
+        if point_exists(mat, p_sub(p, i)):
+            ret.append(p_sub(p, i))
     return ret
 
 
@@ -110,4 +148,9 @@ def point_exists(mat, p):
     return x_check and y_check and z_check
 
 
+def p_add(p1, p2):
+    return (p1[0] + p2[0], p1[1] + p2[1], p1[2] + p2[2])
 
+
+def p_sub(p1, p2):
+    return (p1[0] - p2[0], p1[1] - p2[1], p1[2] - p2[2])
