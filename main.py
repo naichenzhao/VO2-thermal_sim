@@ -2,6 +2,7 @@ import numpy as np
 from tqdm import tqdm
 from matplotlib import pyplot as plt
 from utils import *
+from state_matrix import *
 
 
 
@@ -15,101 +16,108 @@ from utils import *
 #  |           Constant values                 |
 #  +-------------------------------------------+
  
-X_GRID = 101
-Y_GRID = 101
+X_GRID = 50
+Y_GRID = 50
 Z_GRID = 1
-r = 1
 
 
 #  +-------------------------------------------+
 #  |        Data point Organization            |
 #  +-------------------------------------------+
+''' [dx, dy, dz, k, cp, p]
+    dx (0) = d-distance
+    dy (1) = y-distance
+    dz (2) = z-distance
+
+    k (3) = thermal conductivity
+    cp (4) = heat capacity
+    p (5) = density (rho)
 '''
-[t, dx, dy, dz, s, k, cp, p]
-
-    t (0) = temperature
-    dx (1) = d-distance
-    dy (2) = y-distance
-    dz (3) = z-distance
-
-    s (4) = if node is static (1 or 0)
-
-    k (5) = thermal conductivity
-    cp (6) = heat capacity
-    p (7) = density (rho)
-'''
-
-dp_length = 8
 
 
 
 
 def main():
     #  +-------------------------------------------+
-    #  |           Setup Matrix                    |
+    #  |             Setup Defaults                |
     #  +-------------------------------------------+
-    print("Setting up matrix... ")
+    print("Setting up Constants... ")
+    dt = 0.2
+    NUM_CYCLES = 15000
 
-    # Matrix for storing the sim
-    mat = np.empty((X_GRID, Y_GRID, Z_GRID, dp_length))
+    # Matrix for storing the point data
+    mat_d = np.empty((X_GRID, Y_GRID, Z_GRID, 6))
 
-    # Mat for stroing temperatures
-    mat_t = np.empty((X_GRID, Y_GRID, Z_GRID))
-
-
+    # Set default values for data matrix
     for i in range(X_GRID):
         for j in range(Y_GRID):
             for k in range(Z_GRID):
-                set_point(mat, (i, j, k), make_point())
+                set_point(mat_d, (i, j, k), make_point())
 
-    min_time = get_min_timestep(mat)
-    
-    # TEMPS = (100, 100, 100, 100)
-    # POINTS = ((0, 0, 0), (50, 50, 0), (3, 0, 0), (25, 25, 0))
 
-    # next_points = set_points(mat, TEMPS, POINTS)
+    # Matrix for storing the point temperatures
+    mat_t = np.empty((X_GRID, Y_GRID, Z_GRID))
 
+    # Set default values for temperature matrix
+    for i in range(X_GRID):
+        for j in range(Y_GRID):
+            for k in range(Z_GRID):
+                set_point(mat_t, (i, j, k), 0)
+
+
+
+
+    #  +-------------------------------------------+
+    #  |           Setup Matrix                    |
+    #  +-------------------------------------------+
+    print("Setting up Matrix... ")
+
+    # Check for min timestep/ stab ility
+    min_time = get_min_timestep(mat_d)
+    if dt > min_time:
+        print("defined time is too large for stability")
+        print("new timestep of", min_time, "has been selected")
+        dt = min_time
+
+    # Calculate state transition matrix
+    a_state, b_state = gen_state_matrix(mat_d, dt)
+
+    # set heated elements
     y_n_plane = [(x, Y_GRID-1, 0) for x in range(X_GRID)]
     x_0_plane = [(0, y, 0) for y in range(Y_GRID)]
     x_n_plane = [(X_GRID-1, y, 0) for y in range(Y_GRID)]
 
     POINTS = [*y_n_plane, *x_0_plane, *x_n_plane]
+    set_mat(mat_t, 100, POINTS)
 
-    next_points = set_mat(mat, 100, POINTS)
 
     print("Printing initial conditions")
-    xy_grid = np.transpose(get_z_temp(mat))
+    xy_grid = np.transpose(get_z_temp(mat_t))
     print_plane(xy_grid)
+    
+
 
 
     #  +-------------------------------------------+
     #  |              Run Loop                     |
     #  +-------------------------------------------+
     print("Running loop... ")
-    dt = 0.25
-    NUM_CYCLES = 100
 
-    if dt > min_time:
-        print("defined time is too large for stability")
-        print("new timestep of", min_time, "has been selected")
-        dt = min_time
+    # Create loop helpers
+    new_temps = np.empty((X_GRID, Y_GRID, Z_GRID))
+    comp_mat = np.empty((X_GRID, Y_GRID, Z_GRID, 6))
+    initial_temps = mat_t.copy()
+    
+    
 
+    # Run loop
     p_bar = tqdm(range(NUM_CYCLES), desc="Running Sim")
     for i in p_bar:
-        usage_rate = len(next_points)/(X_GRID*Y_GRID*Z_GRID)
-        p_bar.set_postfix({'% usage': usage_rate})
-        next_points = sim_priority(mat, mat_t, next_points, dt)
-    
-    print("Printing halfway conditions")
-    xy_grid = np.transpose(get_z_temp(mat))
-    print_plane(xy_grid)
+        new_temps = transition_state(mat_t, comp_mat, a_state, b_state)
+        mat_t = set_mat_temps(mat_t, new_temps, initial_temps)
 
-    p_bar = tqdm(range(NUM_CYCLES), desc="Running Sim")
-    for i in p_bar:
-        usage_rate = len(next_points)/(X_GRID*Y_GRID*Z_GRID)
-        p_bar.set_postfix({'% usage': usage_rate})
-        next_points = sim_priority(mat, mat_t, next_points, dt)
-    
+
+
 
 
     #  +-------------------------------------------+
@@ -117,45 +125,90 @@ def main():
     #  +-------------------------------------------+
     print("Printing final result... ")
 
-    xy_grid = np.transpose(get_z_temp(mat))
+    print("-----------------------------")
 
-    # print(xy_grid)
-
+    xy_grid = np.transpose(get_z_temp(mat_t))
     print_plane(xy_grid)
 
-    
+
+
+
+
+
 
     
+#  +------------------------------------------------+
+#  |             Helper Functions                   |
+#  +------------------------------------------------+
 
 def print_plane(plane):
     p = plt.imshow(plane, extent=[0, X_GRID,
-                   0, Y_GRID], cmap='gist_heat', vmax=120)
+                   0, Y_GRID], cmap='gist_heat', vmax=115)
     plt.colorbar(p)
     plt.show()
 
-def set_points(mat, temps, coordinates):
+
+def get_min_timestep(mat):
+    min_t = 100000
+    for i in range(X_GRID):
+        for j in range(Y_GRID):
+            for k in range(Z_GRID):
+                curr_p = get_point(mat, (i, j, k))
+                a = get_cp(curr_p)*get_p(curr_p)
+                b = 3*get_dx(curr_p)*get_dy(curr_p)*get_dz(curr_p)
+                curr_t = 0.9 * a/b
+                min_t = min(curr_t, min_t)
+    return min_t
+
+
+#  +------------------------------------------------+
+#  |            Set Point Functions                 |
+#  +------------------------------------------------+
+
+def set_points(mat_t, temps, coordinates):
     r_set = set()
 
     for i in range(len(temps)):
         curr_loc = coordinates[i]
         curr_temp = temps[i]
-
-        set_point(mat, curr_loc, make_point(t=curr_temp, s = 1))
-        r_set.add(curr_loc)
-        r_set.update(get_adj(mat, curr_loc))
-    return r_set
+        set_point(mat_t, curr_loc, curr_temp)
 
 
-def set_mat(mat, temp, coordinates):
-    r_set = set()
-
+def set_mat(t_mat, temp, coordinates):
+    
     for i in range(len(coordinates)):
         curr_loc = coordinates[i]
-        set_point(mat, curr_loc, make_point(t=temp, s=1))
+        set_point(t_mat, curr_loc, temp)
+
+
+def set_points_r(mat_t, temps, coordinates):
+    r_set = set()
+
+    for i in range(len(temps)):
+        curr_loc = coordinates[i]
+        curr_temp = temps[i]
+        set_point(mat_t, curr_loc, curr_temp)
+
         r_set.add(curr_loc)
-        r_set.update(get_adj(mat, curr_loc))
+        r_set.update(get_adj(mat_t, curr_loc))
     return r_set
 
+
+def set_mat_r(t_mat, temp, coordinates):
+    r_set = set()
+    for i in range(len(coordinates)):
+        # Set the temperature values
+        curr_loc = coordinates[i]
+        set_point(t_mat, curr_loc, temp)
+
+        r_set.add(curr_loc)
+    return r_set
+
+
+
+#  +------------------------------------------------+
+#  |            Set Point Functions                 |
+#  +------------------------------------------------+
 
 def sim_priority(mat, mat_t, vals, dt):
     r_set = set()
@@ -166,38 +219,10 @@ def sim_priority(mat, mat_t, vals, dt):
         r_set.update(points)
 
     for p in vals:
-        set_t(get_point(mat, p), get_point(mat_t, p))
+        set_point(get_point(mat, p), get_point(mat_t, p))
 
     return r_set
 
-
-def sim_all(mat, mat_t, vals, dt):
-    r_set = set()
-    new_temps = {}
-
-    for p in vals:
-        t, points = calculate_dt_l(mat, p, dt)
-        new_temps[p] = t
-        r_set.update(points)
-
-    for p in new_temps.keys():
-        set_t(get_point(mat, p), new_temps[p])
-
-    return r_set
-
-
-
-def get_min_timestep(mat):
-    min_t = 100000;
-    for i in range(X_GRID):
-        for j in range(Y_GRID):
-            for k in range(Z_GRID):
-                curr_p = get_point(mat, (i, j, k))
-                a = get_cp(curr_p)*get_p(curr_p)
-                b = 3*get_dx(curr_p)*get_dy(curr_p)*get_dz(curr_p)
-                curr_t = 0.9 * a/b
-                min_t = min(curr_t, min_t)
-    return min_t
 
 
 if __name__ == '__main__':
