@@ -3,13 +3,20 @@ from tqdm import tqdm
 from matplotlib import pyplot as plt
 from utils import *
 
-    
+
+
+# TODO:
+#   - try to get faster computation (maybe using np.pad)
+#   - make a way of just calculating all points - make use of caching 
+
+
+
 #  +-------------------------------------------+
 #  |           Constant values                 |
 #  +-------------------------------------------+
  
-X_GRID = 51
-Y_GRID = 51
+X_GRID = 101
+Y_GRID = 101
 Z_GRID = 1
 r = 1
 
@@ -43,7 +50,12 @@ def main():
     #  +-------------------------------------------+
     print("Setting up matrix... ")
 
+    # Matrix for storing the sim
     mat = np.empty((X_GRID, Y_GRID, Z_GRID, dp_length))
+
+    # Mat for stroing temperatures
+    mat_t = np.empty((X_GRID, Y_GRID, Z_GRID))
+
 
     for i in range(X_GRID):
         for j in range(Y_GRID):
@@ -52,10 +64,22 @@ def main():
 
     min_time = get_min_timestep(mat)
     
-    TEMPS = (100, 100, 100, 100)
-    POINTS = ((0, 0, 0), (50, 50, 0), (3, 0, 0), (25, 25, 0))
+    # TEMPS = (100, 100, 100, 100)
+    # POINTS = ((0, 0, 0), (50, 50, 0), (3, 0, 0), (25, 25, 0))
 
-    next_points = set_mat(mat, TEMPS, POINTS)
+    # next_points = set_points(mat, TEMPS, POINTS)
+
+    y_n_plane = [(x, Y_GRID-1, 0) for x in range(X_GRID)]
+    x_0_plane = [(0, y, 0) for y in range(Y_GRID)]
+    x_n_plane = [(X_GRID-1, y, 0) for y in range(Y_GRID)]
+
+    POINTS = [*y_n_plane, *x_0_plane, *x_n_plane]
+
+    next_points = set_mat(mat, 100, POINTS)
+
+    print("Printing initial conditions")
+    xy_grid = np.transpose(get_z_temp(mat))
+    print_plane(xy_grid)
 
 
     #  +-------------------------------------------+
@@ -63,36 +87,53 @@ def main():
     #  +-------------------------------------------+
     print("Running loop... ")
     dt = 0.25
-    NUM_CYCLES = 400
+    NUM_CYCLES = 100
 
     if dt > min_time:
         print("defined time is too large for stability")
         print("new timestep of", min_time, "has been selected")
         dt = min_time
 
+    p_bar = tqdm(range(NUM_CYCLES), desc="Running Sim")
+    for i in p_bar:
+        usage_rate = len(next_points)/(X_GRID*Y_GRID*Z_GRID)
+        p_bar.set_postfix({'% usage': usage_rate})
+        next_points = sim_priority(mat, mat_t, next_points, dt)
+    
+    print("Printing halfway conditions")
+    xy_grid = np.transpose(get_z_temp(mat))
+    print_plane(xy_grid)
 
-
-    for i in tqdm(range(NUM_CYCLES)):
-        next_points = sim(mat, next_points, dt)
+    p_bar = tqdm(range(NUM_CYCLES), desc="Running Sim")
+    for i in p_bar:
+        usage_rate = len(next_points)/(X_GRID*Y_GRID*Z_GRID)
+        p_bar.set_postfix({'% usage': usage_rate})
+        next_points = sim_priority(mat, mat_t, next_points, dt)
     
 
 
     #  +-------------------------------------------+
     #  |           Print Values                    |
     #  +-------------------------------------------+
-    print("Printing... ")
+    print("Printing final result... ")
 
     xy_grid = np.transpose(get_z_temp(mat))
 
     # print(xy_grid)
 
-    p = plt.imshow(xy_grid, extent=[0,X_GRID,0,Y_GRID], cmap='gist_heat', vmax = 120)
+    print_plane(xy_grid)
+
+    
+
+    
+
+def print_plane(plane):
+    p = plt.imshow(plane, extent=[0, X_GRID,
+                   0, Y_GRID], cmap='gist_heat', vmax=120)
     plt.colorbar(p)
     plt.show()
 
-
-
-def set_mat(mat, temps, coordinates):
+def set_points(mat, temps, coordinates):
     r_set = set()
 
     for i in range(len(temps)):
@@ -105,8 +146,32 @@ def set_mat(mat, temps, coordinates):
     return r_set
 
 
+def set_mat(mat, temp, coordinates):
+    r_set = set()
 
-def sim(mat, vals, dt):
+    for i in range(len(coordinates)):
+        curr_loc = coordinates[i]
+        set_point(mat, curr_loc, make_point(t=temp, s=1))
+        r_set.add(curr_loc)
+        r_set.update(get_adj(mat, curr_loc))
+    return r_set
+
+
+def sim_priority(mat, mat_t, vals, dt):
+    r_set = set()
+
+    for p in vals:
+        t, points = calculate_dt_l(mat, p, dt)
+        set_point(mat_t, p, t)
+        r_set.update(points)
+
+    for p in vals:
+        set_t(get_point(mat, p), get_point(mat_t, p))
+
+    return r_set
+
+
+def sim_all(mat, mat_t, vals, dt):
     r_set = set()
     new_temps = {}
 
