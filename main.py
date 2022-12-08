@@ -5,20 +5,16 @@ from utils import *
 from state_matrix import *
 
 
-
 # TODO:
 #   - try to get faster computation (maybe using np.pad)
 #   - make a way of just calculating all points - make use of caching 
 
 
 
-#  +-------------------------------------------+
-#  |           Constant values                 |
-#  +-------------------------------------------+
- 
-X_GRID = 50
-Y_GRID = 50
-Z_GRID = 1
+X_GRID = 100
+Y_GRID = 100
+Z_GRID = 4
+
 
 
 #  +-------------------------------------------+
@@ -33,8 +29,6 @@ Z_GRID = 1
     cp (4) = heat capacity
     p (5) = density (rho)
 '''
-
-
 
 
 def main():
