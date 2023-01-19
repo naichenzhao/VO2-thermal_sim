@@ -1,7 +1,12 @@
+from PySpice import *
+from PySpice.Spice.Netlist import Circuit
+import PySpice.Logging.Logging as Logging
+
 import numpy as np
 from tqdm import tqdm
 from matplotlib import pyplot as plt
-from utils import *
+from thermo_utils import *
+from electro_utils import *
 from state_matrix import *
 
 
@@ -17,7 +22,10 @@ from state_matrix import *
 
 X_GRID = 300
 Y_GRID = 100
-Z_GRID = 1
+Z_GRID = 5
+
+NUM_CYCLES = 100000
+
 
 
 
@@ -45,12 +53,12 @@ Data matrix: mat_d - [dx, dy, dz, k, cp, p]
 
 
 def main():
+    
     #  +-------------------------------------------+
-    #  |             Setup Defaults                |
+    #  |              Setup Matrix                 |
     #  +-------------------------------------------+
-    print("Setting up Constants... ")
+    print("Setting up Matrix... ")
     dt = 0.1
-    NUM_CYCLES = 100000
 
     # Create primary matrices to use
     mat_d = np.zeros((X_GRID, Y_GRID, Z_GRID, 6))
@@ -62,34 +70,32 @@ def main():
         for j in range(Y_GRID):
             for k in range(Z_GRID):
                 set_point(mat_d, (i, j, k), make_point())
-    
-    
-    
-    
-    #  +-------------------------------------------+
-    #  |           Setup Matrix                    |
-    #  +-------------------------------------------+
-    print("Setting up Matrix... ")
 
-    # Check for min timestep/ stab ility
+    
+    
+    #  +-------------------------------------------+
+    #  |           Setup Thermo                    |
+    #  +-------------------------------------------+
+    print("Setting up Thermo... ")
+    
+    '''Check for min timestep/ stability'''
     min_time = get_min_timestep(mat_d)
     if dt > min_time:
         print("defined time is too large for stability")
         print("new timestep of", min_time, "has been selected")
         dt = min_time
 
-    # Calculate state transition matrix
+
+    '''Calculate state transition matrix'''
     a_state, b_state = gen_state_matrix(mat_d, dt)
     h_state = gen_h_state(mat_d, dt)
 
-
-    # Set values for heat transfer matrix
+    ''' Set values for heat transfer matrix '''
     # set_heat_mat(mat_h, 100000, ((50, 40), (50, 60)))
 
-
-    # set heated matrix elements
-    z_heat = 0
     
+    '''Set up boundry Temperatures'''
+    z_heat = 0
     x_0_plane = [(0, y, z_heat) for y in range(Y_GRID)]
     x_n_plane = [(X_GRID-1, y, z_heat) for y in range(Y_GRID)]
     y_n_plane = [(x, Y_GRID-1, z_heat) for x in range(1, X_GRID-1)]
@@ -97,23 +103,52 @@ def main():
     mask = set_mat(mat_t, 100, POINTS)
 
     y_0_plane = [(x, 0, z_heat) for x in range(1, X_GRID-1)]
-    POINTS2 = [*y_0_plane]
-    mask2 = set_mat(mat_t, 0, POINTS2)
+    POINTS_2 = [*y_0_plane]
+    mask2 = set_mat(mat_t, 0, POINTS_2)
 
     mask = mask + mask2
 
 
-    # Print the initial Conditions
+    '''Print the initial Conditions'''
     print("Printing initial conditions")
-    print_mat(mat_t)
-    
-    
-    
-    
-    
+    # print_mat(mat_t)
+
+
+
     #  +-------------------------------------------+
-    #  |              Run Loop                     |
+    #  |           Setup Electrostatics            |
     #  +-------------------------------------------+
+    print("Setting up Electrostatics... ")
+
+    logger = Logging.setup_logging()
+    circuit = Circuit('voltage bridge')
+    circuit.V('input', 'vin', circuit.gnd, '10V')
+
+    X_EL = 100
+    Y_EL = 100
+    Z_EL = 5
+
+
+    # Make node matrix
+    nodes = np.empty((X_EL, Y_EL, Z_EL, 3))
+    for i in range(X_EL):
+        for j in range(Y_EL):
+            for k in range(Z_EL):
+                nodes[i, j, k, 0] = i
+                nodes[i, j, k, 1] = j
+                nodes[i, j, k, 2] = k
+    
+    # Make reistor matrix
+    r_mat = get_res_matrix(mat_t, mat_d)
+
+    # setup resistors
+    setup_resistors(circuit, r_mat, nodes)
+
+    #  +-----------------------------------------------------+
+    #  |                                                     |
+    #  |                       Run Loop                      |
+    #  |                                                     |
+    #  +-----------------------------------------------------+
     print("Running loop... ")
 
     # Create loop helpers
@@ -127,9 +162,13 @@ def main():
     # Run loop
     p_bar = tqdm(range(NUM_CYCLES), desc="Running Sim")
     for i in p_bar:
+
+        # Thermal Sim
         new_temps = transition_state(mat_t, comp_mat, a_state, b_state).copy()
         mat_t = set_mat_temps(mask, initial_temps, new_temps)
         apply_heat(mat_t, h_state, mat_h)
+
+        # Electrostatic Sim
 
 
 
@@ -146,11 +185,13 @@ def main():
 
 
 
+
 #  +------------------------------------------------------------------+
 #  |                                                                  |
-#  |                       Helper Functions                           |
+#  |                     Printing Functions                           |
 #  |                                                                  |
 #  +------------------------------------------------------------------+
+
 
 def print_plane(planes):
     C = 'gist_heat'
@@ -177,60 +218,14 @@ def print_plane(planes):
 
     plt.show()
 
+
+
 def print_mat(mat_t):
     grid1 = get_z_temp(mat_t)
     # grid2 = get_z_temp(mat_t, 1)
     # grid3 = get_z_temp(mat_t, 2)
     # grid4 = get_z_temp(mat_t, 3)
     print_plane(np.array([grid1]))
-
-
-def get_min_timestep(mat):
-    min_t = 100000
-    for i in range(X_GRID):
-        for j in range(Y_GRID):
-            for k in range(Z_GRID):
-                curr_p = get_point(mat, (i, j, k))
-                a = get_cp(curr_p)*get_p(curr_p)
-                b = 3*get_dx(curr_p)*get_dy(curr_p)*get_dz(curr_p)
-                curr_t = 0.9 * a/b
-                min_t = min(curr_t, min_t)
-    return min_t
-
-
-#  +------------------------------------------------------------------+
-#  |                                                                  |
-#  |                    Set Point Functions                           |
-#  |                                                                  |
-#  +------------------------------------------------------------------+
-
-
-def set_points(t_mat, temps, coordinates):
-    mask = np.zeros(t_mat.shape)
-
-    for i in range(len(temps)):
-        curr_loc = coordinates[i]
-        curr_temp = temps[i]
-        set_point(t_mat, curr_loc, curr_temp)
-        set_point(mask, curr_loc, 1)
-
-    return mask
-
-
-def set_mat(t_mat, temp, coordinates):
-    mask = np.zeros(t_mat.shape)
-
-    for i in range(len(coordinates)):
-        curr_loc = coordinates[i]
-        set_point(t_mat, curr_loc, temp)
-        set_point(mask, curr_loc, 1)
-
-    return mask
-
-
-def set_heat_mat(h_mat, temp, coordinates):
-    for curr in coordinates:
-        h_mat[curr[0], curr[1]] = temp
 
 
 if __name__ == '__main__':

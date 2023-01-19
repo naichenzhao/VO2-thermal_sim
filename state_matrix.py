@@ -1,5 +1,5 @@
 import numpy as np
-from utils import *
+from thermo_utils import *
 
 
 def gen_state_matrix(mat_d, dt):
