@@ -15,9 +15,9 @@ from state_matrix import *
 #  |                                                                  |
 #  +------------------------------------------------------------------+
 
-X_GRID = 100
+X_GRID = 300
 Y_GRID = 100
-Z_GRID = 4
+Z_GRID = 1
 
 
 
@@ -50,7 +50,7 @@ def main():
     #  +-------------------------------------------+
     print("Setting up Constants... ")
     dt = 0.1
-    NUM_CYCLES = 10000
+    NUM_CYCLES = 100000
 
     # Create primary matrices to use
     mat_d = np.zeros((X_GRID, Y_GRID, Z_GRID, 6))
@@ -159,23 +159,30 @@ def print_plane(planes):
     num_args = len(planes)
     x = int(np.sqrt(num_args))
     y = int(np.ceil(num_args/x))
-    fig, axes = plt.subplots(nrows=x, ncols=y)
-    i = 0;
-    for ax in axes.flat:
-        pl = np.transpose(planes[i])
-        i += 1
-        im = ax.imshow(pl, extent=[0, X_GRID, 0, Y_GRID], cmap=C, vmax=MAXT)
-        ax.set_title(f'Layer {i}', fontsize=8)
 
-    fig.colorbar(im, ax=axes.ravel().tolist())
+    if x ==1 and y == 1:
+        p = plt.imshow(np.transpose(planes[0]), extent=[0, X_GRID,
+                                      0, Y_GRID], cmap='gist_heat', vmax=115)
+        plt.colorbar(p)
+        plt.show()
+    else:
+        fig, axes = plt.subplots(nrows=x, ncols=y)
+        i = 0;
+        for ax in axes.flat:
+            pl = np.transpose(planes[i])
+            i += 1
+            im = ax.imshow(pl, extent=[0, X_GRID, 0, Y_GRID], cmap=C, vmax=MAXT)
+            ax.set_title(f'Layer {i}', fontsize=8)
+        fig.colorbar(im, ax=axes.ravel().tolist())
+
     plt.show()
 
 def print_mat(mat_t):
     grid1 = get_z_temp(mat_t)
-    grid2 = get_z_temp(mat_t, 1)
-    grid3 = get_z_temp(mat_t, 2)
-    grid4 = get_z_temp(mat_t, 3)
-    print_plane(np.array([grid1, grid2, grid3, grid4]))
+    # grid2 = get_z_temp(mat_t, 1)
+    # grid3 = get_z_temp(mat_t, 2)
+    # grid4 = get_z_temp(mat_t, 3)
+    print_plane(np.array([grid1]))
 
 
 def get_min_timestep(mat):
