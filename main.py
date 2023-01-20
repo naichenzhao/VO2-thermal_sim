@@ -20,11 +20,24 @@ from state_matrix import *
 #  |                                                                  |
 #  +------------------------------------------------------------------+
 
-X_GRID = 300
-Y_GRID = 100
+
+# Number of runs
+NUM_CYCLES = 100
+
+# Grid dimensionns
+X_GRID = 100
+Y_GRID = 50
 Z_GRID = 5
 
-NUM_CYCLES = 100000
+# Electrostatic Dimensions
+STARTX = 15
+STARTY = 15
+
+X_ESIM = 70
+Y_ESIM = 20
+Z_ESIM = 3
+
+CONTACT_LENGTH = 10
 
 
 
@@ -39,7 +52,6 @@ Finite Difference for 3D Heat Transfer
 
 Temperature Matrix: mat_t 
     3D matrix of point temperatures
-    
 
 Data matrix: mat_d - [dx, dy, dz, k, cp, p]
     dx (0) = x-distance
@@ -58,11 +70,11 @@ def main():
     #  |              Setup Matrix                 |
     #  +-------------------------------------------+
     print("Setting up Matrix... ")
-    dt = 0.1
+    dt = 0.15
 
     # Create primary matrices to use
     mat_d = np.zeros((X_GRID, Y_GRID, Z_GRID, 6))
-    mat_t = np.zeros((X_GRID, Y_GRID, Z_GRID))
+    mat_t = np.ones((X_GRID, Y_GRID, Z_GRID)) * (273.15 + 20) # Set to 20C
     mat_h = np.zeros((X_GRID, Y_GRID))
 
     # Set default values for data matrix
@@ -91,7 +103,8 @@ def main():
     h_state = gen_h_state(mat_d, dt)
 
     ''' Set values for heat transfer matrix '''
-    # set_heat_mat(mat_h, 100000, ((50, 40), (50, 60)))
+    laser_points = [[i, 24] for i in range(25, 75)]
+    set_heat_mat(mat_h, 25, laser_points)
 
     
     '''Set up boundry Temperatures'''
@@ -100,18 +113,13 @@ def main():
     x_n_plane = [(X_GRID-1, y, z_heat) for y in range(Y_GRID)]
     y_n_plane = [(x, Y_GRID-1, z_heat) for x in range(1, X_GRID-1)]
     POINTS = [*x_0_plane, *x_n_plane, *y_n_plane]
-    mask = set_mat(mat_t, 100, POINTS)
+    mask = set_mat(mat_t, (273.15 + 20), POINTS)
 
     y_0_plane = [(x, 0, z_heat) for x in range(1, X_GRID-1)]
     POINTS_2 = [*y_0_plane]
-    mask2 = set_mat(mat_t, 0, POINTS_2)
+    mask2 = set_mat(mat_t, (273.15 + 20), POINTS_2)
 
     mask = mask + mask2
-
-
-    '''Print the initial Conditions'''
-    print("Printing initial conditions")
-    # print_mat(mat_t)
 
 
 
@@ -124,25 +132,32 @@ def main():
     circuit = Circuit('voltage bridge')
     circuit.V('input', 'vin', circuit.gnd, '10V')
 
-    X_EL = 100
-    Y_EL = 100
-    Z_EL = 5
-
 
     # Make node matrix
-    nodes = np.empty((X_EL, Y_EL, Z_EL, 3))
-    for i in range(X_EL):
-        for j in range(Y_EL):
-            for k in range(Z_EL):
+    nodes = np.empty((X_ESIM, Y_ESIM, Z_ESIM, 3))
+    for i in range(X_ESIM):
+        for j in range(Y_ESIM):
+            for k in range(Z_ESIM):
                 nodes[i, j, k, 0] = i
                 nodes[i, j, k, 1] = j
                 nodes[i, j, k, 2] = k
     
     # Make reistor matrix
-    r_mat = get_res_matrix(mat_t, mat_d)
+    r_mat = get_res_matrix(mat_t, mat_d, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM)
 
     # setup resistors
-    setup_resistors(circuit, r_mat, nodes)
+    setup_resistors(circuit, r_mat, nodes, CONTACT_LENGTH)
+
+
+    #Print the initial Conditions
+    print("Printing initial conditions")
+    print("    Printing Thermal Conditions")
+    print_mat_t(mat_t)
+    print_mat_e(mat_t, STARTX, STARTY, X_ESIM, Y_ESIM, CONTACT_LENGTH)
+
+
+
+
 
     #  +-----------------------------------------------------+
     #  |                                                     |
@@ -169,6 +184,10 @@ def main():
         apply_heat(mat_t, h_state, mat_h)
 
         # Electrostatic Sim
+        r_mat = get_res_matrix(mat_t, mat_d, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM)
+        update_resistors(circuit, r_mat, nodes, CONTACT_LENGTH)
+        simulator = circuit.simulator()
+        analysis = simulator.operating_point()
 
 
 
@@ -179,7 +198,9 @@ def main():
 
     print("-----------------------------")
 
-    print_mat(mat_t)
+    print_mat_t(mat_t)
+
+
 
 
 
@@ -203,7 +224,7 @@ def print_plane(planes):
 
     if x ==1 and y == 1:
         p = plt.imshow(np.transpose(planes[0]), extent=[0, X_GRID,
-                                      0, Y_GRID], cmap='gist_heat', vmax=115)
+                                                        0, Y_GRID], cmap='gist_heat', vmax=400)
         plt.colorbar(p)
         plt.show()
     else:
@@ -220,12 +241,26 @@ def print_plane(planes):
 
 
 
-def print_mat(mat_t):
+def print_mat_t(mat_t):
     grid1 = get_z_temp(mat_t)
     # grid2 = get_z_temp(mat_t, 1)
     # grid3 = get_z_temp(mat_t, 2)
     # grid4 = get_z_temp(mat_t, 3)
     print_plane(np.array([grid1]))
+
+
+def print_mat_e(mat_t, startx, starty, x, y, contact_length):
+    endx = startx + x
+    endy = starty + y
+
+    printmat = np.zeros((mat_t.shape[0], mat_t.shape[1]))
+    printmat[startx:endx, starty:endy] = 1
+    printmat[startx:startx+contact_length, starty:endy] = 2
+    printmat[endx-contact_length:endx, starty:endy] = 2
+
+
+    plt.imshow(np.transpose(printmat), extent=[0,X_GRID,0,Y_GRID], cmap='plasma')
+    plt.show()
 
 
 if __name__ == '__main__':

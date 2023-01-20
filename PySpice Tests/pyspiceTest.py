@@ -4,7 +4,7 @@ import PySpice.Logging.Logging as Logging
 logger = Logging.setup_logging()
 
 
-MAX_LEN = 5000
+MAX_LEN = 5
 
 circuit = Circuit('voltage bridge')
 circuit.V('input', circuit.gnd, 1, '10V')
@@ -12,6 +12,8 @@ circuit.V('input', circuit.gnd, 1, '10V')
 
 for i in range(MAX_LEN):
     circuit.R(i, 1, circuit.gnd, kilo(1))
+    circuit["R" + str(i)].resistance = 100
+
 
 
 for i in range(MAX_LEN):
