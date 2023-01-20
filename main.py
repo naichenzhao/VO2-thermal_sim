@@ -22,7 +22,7 @@ from state_matrix import *
 
 
 # Number of runs
-NUM_CYCLES = 100
+NUM_CYCLES = 3000
 
 # Grid dimensionns
 X_GRID = 100
@@ -30,14 +30,14 @@ Y_GRID = 50
 Z_GRID = 5
 
 # Electrostatic Dimensions
-STARTX = 15
-STARTY = 15
+STARTX = 20
+STARTY = 20
 
-X_ESIM = 70
-Y_ESIM = 20
+X_ESIM = 60
+Y_ESIM = 10
 Z_ESIM = 3
 
-CONTACT_LENGTH = 10
+CONTACT_LENGTH = 7
 
 
 
@@ -104,7 +104,7 @@ def main():
 
     ''' Set values for heat transfer matrix '''
     laser_points = [[i, 24] for i in range(25, 75)]
-    set_heat_mat(mat_h, 25, laser_points)
+    set_heat_mat(mat_h, 30, laser_points)
 
     
     '''Set up boundry Temperatures'''
@@ -128,13 +128,12 @@ def main():
     #  +-------------------------------------------+
     print("Setting up Electrostatics... ")
 
-    logger = Logging.setup_logging()
-    circuit = Circuit('voltage bridge')
+    circuit = Circuit('sim')
     circuit.V('input', 'vin', circuit.gnd, '10V')
 
 
     # Make node matrix
-    nodes = np.empty((X_ESIM, Y_ESIM, Z_ESIM, 3))
+    nodes = np.zeros((X_ESIM, Y_ESIM, Z_ESIM, 3), dtype=np.int8)
     for i in range(X_ESIM):
         for j in range(Y_ESIM):
             for k in range(Z_ESIM):
@@ -145,8 +144,8 @@ def main():
     # Make reistor matrix
     r_mat = get_res_matrix(mat_t, mat_d, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM)
 
-    # setup resistors
-    setup_resistors(circuit, r_mat, nodes, CONTACT_LENGTH)
+    # # setup resistors
+    # setup_resistors(circuit, r_mat, nodes, CONTACT_LENGTH)
 
 
     #Print the initial Conditions
@@ -168,8 +167,12 @@ def main():
 
     # Create loop helpers
     new_temps = np.zeros((X_GRID, Y_GRID, Z_GRID))
-    comp_mat = np.zeros((X_GRID, Y_GRID, Z_GRID, 6))
     initial_temps = mat_t.copy()
+
+    comp_mat = np.zeros((X_GRID, Y_GRID, Z_GRID, 6))
+    res_heat = np.zeros((X_ESIM, Y_ESIM, Z_ESIM))
+    dv_mat = np.zeros((X_ESIM, Y_ESIM, Z_ESIM, 6))
+    
     
     
     
@@ -177,19 +180,31 @@ def main():
     # Run loop
     p_bar = tqdm(range(NUM_CYCLES), desc="Running Sim")
     for i in p_bar:
-
-        # Thermal Sim
+        # -------------------------------
+        #   Thermal Sim
+        # -------------------------------
         new_temps = transition_state(mat_t, comp_mat, a_state, b_state).copy()
         mat_t = set_mat_temps(mask, initial_temps, new_temps)
         apply_heat(mat_t, h_state, mat_h)
 
-        # Electrostatic Sim
+
+
+        # -------------------------------
+        #   Electrostatic Sim
+        # -------------------------------
         r_mat = get_res_matrix(mat_t, mat_d, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM)
-        update_resistors(circuit, r_mat, nodes, CONTACT_LENGTH)
-        simulator = circuit.simulator()
-        analysis = simulator.operating_point()
+        setup_resistors(circuit, r_mat, nodes, CONTACT_LENGTH)
+        res_heat, simulator = get_heat(circuit, r_mat, dv_mat)
 
+        # Gotta ngspice or else theres a memory leak
+        ngspice = simulator.factory(circuit).ngspice
+        ngspice.remove_circuit()
+        ngspice.destroy()
 
+        circuit = Circuit('sim') # Remake the circuit
+        circuit.V('input', 'vin', circuit.gnd, '10V')
+        add_head(mat_t, res_heat, dt, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM)
+        
 
     #  +-------------------------------------------+
     #  |           Print Values                    |

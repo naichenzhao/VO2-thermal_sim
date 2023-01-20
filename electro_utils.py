@@ -8,11 +8,43 @@ import numpy as np
 #  |                 Main Functions                 |
 #  +------------------------------------------------+
 
-def get_voltage_matrix():
+def get_heat(circuit, r_mat, dv_mat):
     # set up variables:
-    return None
+    simulator = circuit.simulator()
+    analysis = simulator.operating_point()
+
+    volt_matrix = np.zeros(r_mat.shape)
 
 
+    for node in analysis.nodes.values():
+        if str(node) == 'vin':
+            continue
+        currP = str(node).split('/')
+        volt_matrix[int(currP[0]), int(currP[1]), int(currP[2])] = float(node)
+    
+    X = r_mat.shape[0]
+    Y = r_mat.shape[1]
+    Z = r_mat.shape[2]
+
+    # ---------- Calculate X points ----------
+    dv_mat[:X-1, :, :, 0] = volt_matrix[:X-1, :, :] - volt_matrix[1:, :, :]
+    dv_mat[1:, :, :, 1] = volt_matrix[1:, :, :] - volt_matrix[:X-1, :, :]
+
+    # ---------- Calculate Y points ----------
+    dv_mat[:, :Y-1, :, 2] = volt_matrix[:, :Y-1, :] - volt_matrix[:, 1:, :]
+    dv_mat[:, 1:, :, 3] = volt_matrix[:, 1:, :] - volt_matrix[:, :Y-1, :]
+
+    # ---------- Calculate Z points ----------
+    dv_mat[:, :, :Z-1, 4] = volt_matrix[:, :, :Z-1] - volt_matrix[:, :, 1:]
+    dv_mat[:, :, 1:, 5] = volt_matrix[:, :, 1:] - volt_matrix[:, :, :Z-1]
+    
+    return np.sum( dv_mat * dv_mat, axis=3) * r_mat, simulator
+
+
+def add_head(mat_t, heat_gen, dt, startx, starty, x, y, z):
+    endx = startx + x
+    endy = starty + y
+    mat_t[startx:endx, starty:endy, 0:z] = mat_t[startx:endx, starty:endy, 0:z] + heat_gen * dt
 
 
 
@@ -184,7 +216,6 @@ def get_selected_area(mat, startx, starty, x, y, z):
     return mat[startx:endx, starty:endy, 0:z]
 
 
-
 #  +------------------------------------------------+
 #  |             Resistance Functions               |
 #  +------------------------------------------------+
@@ -193,11 +224,11 @@ def get_res_matrix(mat_t, mat_d, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM):
     emat_t = get_selected_area(mat_t, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM)
     emat_d = get_selected_area(mat_d[:,:,:,0], STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM)
 
-    r_mat = get_resistivity(emat_t, alpha = -0.001)/(emat_d * 2)
+    r_mat = get_resistivity(emat_t, alpha = -0.01, r_0 = 2)/(emat_d * 2)
     return r_mat
 
 
-def get_resistivity(M, r_0 = 1.68e-8, alpha = 0.00386, T0 = 293.15):
+def get_resistivity(M, r_0 = 1.68e-8, alpha = 0.0386, T0 = 293.15):
     T0_mat = np.ones(M.shape) * T0
     return r_0 * (1 + alpha*(M-T0_mat))
 
