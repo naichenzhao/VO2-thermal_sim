@@ -22,22 +22,22 @@ from state_matrix import *
 
 
 # Number of runs
-NUM_CYCLES = 3000
+NUM_CYCLES = 1
 
 # Grid dimensionns
-X_GRID = 100
-Y_GRID = 50
-Z_GRID = 5
+X_GRID = 20
+Y_GRID = 1
+Z_GRID = 1
 
 # Electrostatic Dimensions
-STARTX = 20
-STARTY = 20
+STARTX = 0
+STARTY = 0
 
-X_ESIM = 60
-Y_ESIM = 10
-Z_ESIM = 3
+X_ESIM = 20
+Y_ESIM = 1
+Z_ESIM = 1
 
-CONTACT_LENGTH = 7
+CONTACT_LENGTH = 1
 
 
 
@@ -101,26 +101,29 @@ def main():
     '''Calculate state transition matrix'''
     a_state, b_state = gen_state_matrix(mat_d, dt)
     h_state = gen_h_state(mat_d, dt)
+    mask = None
 
-    ''' Set values for heat transfer matrix '''
-    laser_points = [[i, 24] for i in range(25, 75)]
-    set_heat_mat(mat_h, 30, laser_points)
+    # ''' Set values for heat transfer matrix '''
+    # laser_points = [[i, 24] for i in range(25, 75)]
+    # set_heat_mat(mat_h, 30, laser_points)
 
     
-    '''Set up boundry Temperatures'''
-    z_heat = 0
-    x_0_plane = [(0, y, z_heat) for y in range(Y_GRID)]
-    x_n_plane = [(X_GRID-1, y, z_heat) for y in range(Y_GRID)]
-    y_n_plane = [(x, Y_GRID-1, z_heat) for x in range(1, X_GRID-1)]
-    POINTS = [*x_0_plane, *x_n_plane, *y_n_plane]
-    mask = set_mat(mat_t, (273.15 + 20), POINTS)
+    # '''Set up boundry Temperatures'''
+    # z_heat = 0
+    # x_0_plane = [(0, y, z_heat) for y in range(Y_GRID)]
+    # x_n_plane = [(X_GRID-1, y, z_heat) for y in range(Y_GRID)]
+    # y_n_plane = [(x, Y_GRID-1, z_heat) for x in range(1, X_GRID-1)]
+    # POINTS = [*x_0_plane, *x_n_plane, *y_n_plane]
+    # mask = set_mat(mat_t, (273.15 + 20), POINTS)
 
-    y_0_plane = [(x, 0, z_heat) for x in range(1, X_GRID-1)]
-    POINTS_2 = [*y_0_plane]
-    mask2 = set_mat(mat_t, (273.15 + 20), POINTS_2)
+    # y_0_plane = [(x, 0, z_heat) for x in range(1, X_GRID-1)]
+    # POINTS_2 = [*y_0_plane]
+    # mask2 = set_mat(mat_t, (273.15 + 20), POINTS_2)
 
-    mask = mask + mask2
+    # mask = mask + mask2
 
+    if mask is None:
+        mask = np.empty((X_GRID, Y_GRID, Z_GRID))
 
 
     #  +-------------------------------------------+
@@ -129,7 +132,7 @@ def main():
     print("Setting up Electrostatics... ")
 
     circuit = Circuit('sim')
-    circuit.V('input', 'vin', circuit.gnd, '10V')
+    circuit.V('input', 'vin', circuit.gnd, '100V')
 
 
     # Make node matrix
@@ -194,7 +197,9 @@ def main():
         # -------------------------------
         r_mat = get_res_matrix(mat_t, mat_d, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM)
         setup_resistors(circuit, r_mat, nodes, CONTACT_LENGTH)
-        res_heat, simulator = get_heat(circuit, r_mat, dv_mat)
+        res_heat, simulator, mat_v = get_heat(circuit, r_mat, dv_mat)
+
+        print_voltage(mat_v);
 
         # Gotta ngspice or else theres a memory leak
         ngspice = simulator.factory(circuit).ngspice
@@ -202,7 +207,7 @@ def main():
         ngspice.destroy()
 
         circuit = Circuit('sim') # Remake the circuit
-        circuit.V('input', 'vin', circuit.gnd, '10V')
+        circuit.V('input', 'vin', circuit.gnd, '100V')
         add_head(mat_t, res_heat, dt, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM)
         
 
@@ -275,6 +280,11 @@ def print_mat_e(mat_t, startx, starty, x, y, contact_length):
 
 
     plt.imshow(np.transpose(printmat), extent=[0,X_GRID,0,Y_GRID], cmap='plasma')
+    plt.show()
+
+def print_voltage(mat_v):
+    plt.imshow(np.transpose(mat_v[:,:,0]), extent=[
+        0, mat_v.shape[0], 0, mat_v.shape[1]], cmap='plasma')
     plt.show()
 
 

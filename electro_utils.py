@@ -38,7 +38,7 @@ def get_heat(circuit, r_mat, dv_mat):
     dv_mat[:, :, :Z-1, 4] = volt_matrix[:, :, :Z-1] - volt_matrix[:, :, 1:]
     dv_mat[:, :, 1:, 5] = volt_matrix[:, :, 1:] - volt_matrix[:, :, :Z-1]
     
-    return np.sum( dv_mat * dv_mat, axis=3) * r_mat, simulator
+    return np.sum( dv_mat * dv_mat, axis=3) * r_mat, simulator, volt_matrix
 
 
 def add_head(mat_t, heat_gen, dt, startx, starty, x, y, z):
@@ -224,7 +224,7 @@ def get_res_matrix(mat_t, mat_d, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM):
     emat_t = get_selected_area(mat_t, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM)
     emat_d = get_selected_area(mat_d[:,:,:,0], STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM)
 
-    r_mat = get_resistivity(emat_t, alpha = -0.01, r_0 = 2)/(emat_d * 2)
+    r_mat = get_resistivity(emat_t, alpha = 0, r_0 = 2)/(emat_d * 2)
     return r_mat
 
 
