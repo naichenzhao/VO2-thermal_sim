@@ -10,9 +10,6 @@ from electro_utils import *
 from state_matrix import *
 
 
-# TODO:
-#   - Test sample transient/steady state solutions
-
 
 #  +------------------------------------------------------------------+
 #  |                                                                  |
@@ -22,22 +19,25 @@ from state_matrix import *
 
 
 # Number of runs
-NUM_CYCLES = 1
+NUM_CYCLES = 1000
 
 # Grid dimensionns
-X_GRID = 20
-Y_GRID = 1
-Z_GRID = 1
+X_GRID = 200
+Y_GRID = 80
+Z_GRID = 6
 
 # Electrostatic Dimensions
-STARTX = 0
-STARTY = 0
+STARTX = 30
+STARTY = 20
 
-X_ESIM = 20
-Y_ESIM = 1
-Z_ESIM = 1
+X_ESIM = 140
+Y_ESIM = 40
+Z_ESIM = 4
 
-CONTACT_LENGTH = 1
+CONTACT_LENGTH = 12
+SCALE = 2
+VOLTAGE = '10V'
+
 
 
 
@@ -103,27 +103,27 @@ def main():
     h_state = gen_h_state(mat_d, dt)
     mask = None
 
-    # ''' Set values for heat transfer matrix '''
-    # laser_points = [[i, 24] for i in range(25, 75)]
-    # set_heat_mat(mat_h, 30, laser_points)
+    ''' Set values for heat transfer matrix '''
+    laser_points = [[i, 39] for i in range(42, 158)]
+    set_heat_mat(mat_h, 50, laser_points)
 
     
-    # '''Set up boundry Temperatures'''
-    # z_heat = 0
-    # x_0_plane = [(0, y, z_heat) for y in range(Y_GRID)]
-    # x_n_plane = [(X_GRID-1, y, z_heat) for y in range(Y_GRID)]
-    # y_n_plane = [(x, Y_GRID-1, z_heat) for x in range(1, X_GRID-1)]
-    # POINTS = [*x_0_plane, *x_n_plane, *y_n_plane]
-    # mask = set_mat(mat_t, (273.15 + 20), POINTS)
+    '''Set up boundry Temperatures'''
+    z_heat = 0
+    x_0_plane = [(0, y, z_heat) for y in range(Y_GRID)]
+    x_n_plane = [(X_GRID-1, y, z_heat) for y in range(Y_GRID)]
+    y_n_plane = [(x, Y_GRID-1, z_heat) for x in range(1, X_GRID-1)]
+    POINTS = [*x_0_plane, *x_n_plane, *y_n_plane]
+    mask = set_mat(mat_t, (273.15 + 20), POINTS)
 
-    # y_0_plane = [(x, 0, z_heat) for x in range(1, X_GRID-1)]
-    # POINTS_2 = [*y_0_plane]
-    # mask2 = set_mat(mat_t, (273.15 + 20), POINTS_2)
+    y_0_plane = [(x, 0, z_heat) for x in range(1, X_GRID-1)]
+    POINTS_2 = [*y_0_plane]
+    mask2 = set_mat(mat_t, (273.15 + 20), POINTS_2)
 
-    # mask = mask + mask2
+    mask = mask + mask2
 
     if mask is None:
-        mask = np.empty((X_GRID, Y_GRID, Z_GRID))
+        mask = np.zeros((X_GRID, Y_GRID, Z_GRID))
 
 
     #  +-------------------------------------------+
@@ -131,30 +131,36 @@ def main():
     #  +-------------------------------------------+
     print("Setting up Electrostatics... ")
 
-    circuit = Circuit('sim')
-    circuit.V('input', 'vin', circuit.gnd, '100V')
-
+    # check if scaling works
+    if X_ESIM % SCALE != 0 or Y_ESIM % SCALE != 0 or Z_ESIM % SCALE != 0 or CONTACT_LENGTH % SCALE != 0:
+        print("[ERROR]: INVALID SCALE VAUE")
+        print("Thermo dimensions dont work, try changing simulation area")
+        quit()
 
     # Make node matrix
-    nodes = np.zeros((X_ESIM, Y_ESIM, Z_ESIM, 3), dtype=np.int8)
-    for i in range(X_ESIM):
-        for j in range(Y_ESIM):
-            for k in range(Z_ESIM):
+    nodes = np.zeros((X_ESIM//SCALE, Y_ESIM//SCALE,
+                     Z_ESIM//SCALE, 3), dtype=np.int8)
+    for i in range(X_ESIM//SCALE):
+        for j in range(Y_ESIM//SCALE):
+            for k in range(Z_ESIM//SCALE):
                 nodes[i, j, k, 0] = i
                 nodes[i, j, k, 1] = j
                 nodes[i, j, k, 2] = k
     
     # Make reistor matrix
-    r_mat = get_res_matrix(mat_t, mat_d, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM)
-
-    # # setup resistors
-    # setup_resistors(circuit, r_mat, nodes, CONTACT_LENGTH)
+    r_mat = get_res_matrix(mat_t, mat_d[0, 0, 0, 0], STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, SCALE)
+    
+    # setup resistors
+    circuit = Circuit('sim')  # Remake the circuit
+    circuit.V('input', 'vin', circuit.gnd, VOLTAGE)
+    setup_resistors(circuit, r_mat, nodes, CONTACT_LENGTH//SCALE)
 
 
     #Print the initial Conditions
     print("Printing initial conditions")
     print("    Printing Thermal Conditions")
     print_mat_t(mat_t)
+    print("    Printing Electrostatic Conditions")
     print_mat_e(mat_t, STARTX, STARTY, X_ESIM, Y_ESIM, CONTACT_LENGTH)
 
 
@@ -173,10 +179,8 @@ def main():
     initial_temps = mat_t.copy()
 
     comp_mat = np.zeros((X_GRID, Y_GRID, Z_GRID, 6))
-    res_heat = np.zeros((X_ESIM, Y_ESIM, Z_ESIM))
-    dv_mat = np.zeros((X_ESIM, Y_ESIM, Z_ESIM, 6))
-    
-    
+    res_heat = np.zeros((X_ESIM//SCALE, Y_ESIM//SCALE, Z_ESIM//SCALE))
+    dv_mat = np.zeros((X_ESIM//SCALE, Y_ESIM//SCALE, Z_ESIM//SCALE, 6))
     
     
     
@@ -195,20 +199,29 @@ def main():
         # -------------------------------
         #   Electrostatic Sim
         # -------------------------------
-        r_mat = get_res_matrix(mat_t, mat_d, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM)
-        setup_resistors(circuit, r_mat, nodes, CONTACT_LENGTH)
-        res_heat, simulator, mat_v = get_heat(circuit, r_mat, dv_mat)
+        r_mat = get_res_matrix(mat_t, mat_d[0,0,0,0], STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, SCALE)
 
-        print_voltage(mat_v);
+        '''For every N cycles, reset spice to make sure we dotn use too much memory'''
+        N = 50
+        if i>0 and i%N == 0 :
+            # Gotta ngspice or else theres a memory leak
+            ngspice = simulator.factory(circuit).ngspice
+            ngspice.remove_circuit()
+            ngspice.destroy()
 
-        # Gotta ngspice or else theres a memory leak
-        ngspice = simulator.factory(circuit).ngspice
-        ngspice.remove_circuit()
-        ngspice.destroy()
+            circuit = Circuit('sim')  # Remake the circuit
+            circuit.V('input', 'vin', circuit.gnd, VOLTAGE)
 
-        circuit = Circuit('sim') # Remake the circuit
-        circuit.V('input', 'vin', circuit.gnd, '100V')
-        add_head(mat_t, res_heat, dt, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM)
+            # Re-create resistor array
+            setup_resistors(circuit, r_mat, nodes, CONTACT_LENGTH//SCALE)
+            res_heat, simulator, mat_v = get_heat(circuit, r_mat, dv_mat)
+
+        else:
+            # Keep using the same simulator
+            update_resistors(circuit, r_mat, nodes, CONTACT_LENGTH//SCALE)
+            res_heat, simulator, mat_v = get_heat(circuit, r_mat, dv_mat)
+
+        add_head(mat_t, res_heat, dt, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, SCALE)
         
 
     #  +-------------------------------------------+
@@ -218,6 +231,8 @@ def main():
 
     print("-----------------------------")
 
+    print_matrix(mat_v)
+    print_matrix(r_mat)
     print_mat_t(mat_t)
 
 
@@ -282,9 +297,9 @@ def print_mat_e(mat_t, startx, starty, x, y, contact_length):
     plt.imshow(np.transpose(printmat), extent=[0,X_GRID,0,Y_GRID], cmap='plasma')
     plt.show()
 
-def print_voltage(mat_v):
-    plt.imshow(np.transpose(mat_v[:,:,0]), extent=[
-        0, mat_v.shape[0], 0, mat_v.shape[1]], cmap='plasma')
+def print_matrix(mat):
+    plt.imshow(np.transpose(mat[:,:,0]), extent=[
+        0, mat.shape[0], 0, mat.shape[1]], cmap='GnBu')
     plt.show()
 
 

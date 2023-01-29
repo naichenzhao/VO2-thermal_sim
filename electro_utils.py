@@ -38,13 +38,19 @@ def get_heat(circuit, r_mat, dv_mat):
     dv_mat[:, :, :Z-1, 4] = volt_matrix[:, :, :Z-1] - volt_matrix[:, :, 1:]
     dv_mat[:, :, 1:, 5] = volt_matrix[:, :, 1:] - volt_matrix[:, :, :Z-1]
     
-    return np.sum( dv_mat * dv_mat, axis=3) * r_mat, simulator, volt_matrix
+    return np.sum( dv_mat * dv_mat, axis=3)/r_mat, simulator, volt_matrix
 
 
-def add_head(mat_t, heat_gen, dt, startx, starty, x, y, z):
+def add_head(mat_t, r_heat, dt, startx, starty, x, y, z, S):
+
+    heat_added = np.zeros((x, y, z))
+    for i in range (r_heat.shape[0]):
+        for j in range (r_heat.shape[1]):
+            for k in range (r_heat.shape[2]):
+                heat_added[S*i:S*(i+1), S*j:S*(j+1), S*k:S*(k+1)] = r_heat[i, j, k]
     endx = startx + x
     endy = starty + y
-    mat_t[startx:endx, starty:endy, 0:z] = mat_t[startx:endx, starty:endy, 0:z] + heat_gen * dt
+    mat_t[startx:endx, starty:endy, 0:z] = mat_t[startx:endx, starty:endy, 0:z] + heat_added * dt
 
 
 
@@ -220,15 +226,21 @@ def get_selected_area(mat, startx, starty, x, y, z):
 #  |             Resistance Functions               |
 #  +------------------------------------------------+
 
-def get_res_matrix(mat_t, mat_d, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM):
-    emat_t = get_selected_area(mat_t, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM)
-    emat_d = get_selected_area(mat_d[:,:,:,0], STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM)
+def get_res_matrix(mat_t, L, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, S):
+    em = get_selected_area(mat_t, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM)
 
-    r_mat = get_resistivity(emat_t, alpha = 0, r_0 = 2)/(emat_d * 2)
+    t_scaled = np.zeros((em.shape[0]//S, em.shape[1]//S, em.shape[2]//S))
+
+    for i in range(t_scaled.shape[0]):
+        for j in range(t_scaled.shape[1]):
+            for k in range(t_scaled.shape[2]):
+                t_scaled[i, j, k] = np.mean(em[S*i:S*(i+1), S*j:S*(j+1), S*k:S*(k+1)])
+
+    r_mat = get_resistivity(t_scaled, alpha=-0.1, r_0=2000)/(L * 2)
     return r_mat
 
 
-def get_resistivity(M, r_0 = 1.68e-8, alpha = 0.0386, T0 = 293.15):
+def get_resistivity(M, r_0 = 1.68e-8, alpha = 0.00386, T0 = 293.15):
     T0_mat = np.ones(M.shape) * T0
     return r_0 * (1 + alpha*(M-T0_mat))
 
