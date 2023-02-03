@@ -236,7 +236,8 @@ def get_res_matrix(mat_t, L, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, S):
             for k in range(t_scaled.shape[2]):
                 t_scaled[i, j, k] = np.mean(em[S*i:S*(i+1), S*j:S*(j+1), S*k:S*(k+1)])
 
-    r_mat = get_resistivity(t_scaled, alpha=-0.1, r_0=2000)/(L * 2)
+    r_mat = get_resistivity(t_scaled, alpha=-0.07, r_0=0.1)/(L * 2)
+    print(t_scaled[20,5,0])
     return r_mat
 
 

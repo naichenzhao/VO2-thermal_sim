@@ -84,7 +84,8 @@ def set_point(mat, p, new_val, check=True):
         return None
     mat[p[0]][p[1]][p[2]] = new_val
 
-def make_point(dx=0.5, dy=0.5, dz=0.5, k=1, cp=1, p=1):
+
+def make_point(dx=0.5*10**-3, dy=0.5*10**-3, dz=0.5*10**-3, k=230, cp=700, p=2329):
     return [dx, dy, dz, k, cp, p]
 
 def get_dx(p):

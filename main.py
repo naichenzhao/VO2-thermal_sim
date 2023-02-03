@@ -19,24 +19,24 @@ from state_matrix import *
 
 
 # Number of runs
-NUM_CYCLES = 1000
+NUM_CYCLES = 20
 
 # Grid dimensionns
 X_GRID = 200
-Y_GRID = 80
-Z_GRID = 6
+Y_GRID = 100
+Z_GRID = 50
 
 # Electrostatic Dimensions
-STARTX = 30
-STARTY = 20
+STARTX = 10
+STARTY = 30
 
-X_ESIM = 140
+X_ESIM = 180
 Y_ESIM = 40
-Z_ESIM = 4
+Z_ESIM = 20
 
-CONTACT_LENGTH = 12
-SCALE = 2
-VOLTAGE = '10V'
+CONTACT_LENGTH = 8
+SCALE = 4
+VOLTAGE = '5V'
 
 
 
@@ -70,7 +70,7 @@ def main():
     #  |              Setup Matrix                 |
     #  +-------------------------------------------+
     print("Setting up Matrix... ")
-    dt = 0.15
+    dt = 0.0015
 
     # Create primary matrices to use
     mat_d = np.zeros((X_GRID, Y_GRID, Z_GRID, 6))
@@ -104,8 +104,8 @@ def main():
     mask = None
 
     ''' Set values for heat transfer matrix '''
-    laser_points = [[i, 39] for i in range(42, 158)]
-    set_heat_mat(mat_h, 50, laser_points)
+    laser_points = [[i, 50] for i in range(18, 182)]
+    set_heat_mat(mat_h, 0, laser_points)
 
     
     '''Set up boundry Temperatures'''
@@ -199,29 +199,29 @@ def main():
         # -------------------------------
         #   Electrostatic Sim
         # -------------------------------
-        r_mat = get_res_matrix(mat_t, mat_d[0,0,0,0], STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, SCALE)
+        # r_mat = get_res_matrix(mat_t, mat_d[0,0,0,0], STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, SCALE)
 
-        '''For every N cycles, reset spice to make sure we dotn use too much memory'''
-        N = 50
-        if i>0 and i%N == 0 :
-            # Gotta ngspice or else theres a memory leak
-            ngspice = simulator.factory(circuit).ngspice
-            ngspice.remove_circuit()
-            ngspice.destroy()
+        # '''For every N cycles, reset spice to make sure we dotn use too much memory'''
+        # N = 50
+        # if i>0 and i%N == 0 :
+        #     # Gotta ngspice or else theres a memory leak
+        #     ngspice = simulator.factory(circuit).ngspice
+        #     ngspice.remove_circuit()
+        #     ngspice.destroy()
 
-            circuit = Circuit('sim')  # Remake the circuit
-            circuit.V('input', 'vin', circuit.gnd, VOLTAGE)
+        #     circuit = Circuit('sim')  # Remake the circuit
+        #     circuit.V('input', 'vin', circuit.gnd, VOLTAGE)
 
-            # Re-create resistor array
-            setup_resistors(circuit, r_mat, nodes, CONTACT_LENGTH//SCALE)
-            res_heat, simulator, mat_v = get_heat(circuit, r_mat, dv_mat)
+        #     # Re-create resistor array
+        #     setup_resistors(circuit, r_mat, nodes, CONTACT_LENGTH//SCALE)
+        #     res_heat, simulator, mat_v = get_heat(circuit, r_mat, dv_mat)
 
-        else:
-            # Keep using the same simulator
-            update_resistors(circuit, r_mat, nodes, CONTACT_LENGTH//SCALE)
-            res_heat, simulator, mat_v = get_heat(circuit, r_mat, dv_mat)
+        # else:
+        #     # Keep using the same simulator
+        #     update_resistors(circuit, r_mat, nodes, CONTACT_LENGTH//SCALE)
+        #     res_heat, simulator, mat_v = get_heat(circuit, r_mat, dv_mat)
 
-        add_head(mat_t, res_heat, dt, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, SCALE)
+        # add_head(mat_t, res_heat, dt, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, SCALE)
         
 
     #  +-------------------------------------------+
@@ -231,8 +231,8 @@ def main():
 
     print("-----------------------------")
 
-    print_matrix(mat_v)
-    print_matrix(r_mat)
+    # print_matrix(mat_v)
+    # print_matrix(r_mat)
     print_mat_t(mat_t)
 
 
