@@ -12,17 +12,9 @@ import numpy as np
 #  |               Set Point Functions              |
 #  +------------------------------------------------+
 
-def get_min_timestep(mat):
-    min_t = 100000
-    for i in range(mat.shape[0]):
-        for j in range(mat.shape[1]):
-            for k in range(mat.shape[2]):
-                curr_p = get_point(mat, (i, j, k))
-                a = get_cp(curr_p)*get_p(curr_p)
-                b = 3*get_dx(curr_p)*get_dy(curr_p)*get_dz(curr_p)
-                curr_t = 0.9 * a/b
-                min_t = min(curr_t, min_t)
-    return min_t
+def get_min_timestep(mat_d):
+    denom = 1/((3/4)*mat_d[:, :, :, 0]*mat_d[:, :, :, 1]*mat_d[:, :, :, 2])
+    return np.min((mat_d[:, :, :, 4]*mat_d[:, :, :, 5])/denom) * 0.95
 
 
 
@@ -85,7 +77,7 @@ def set_point(mat, p, new_val, check=True):
     mat[p[0]][p[1]][p[2]] = new_val
 
 
-def make_point(dx=0.5*10**-3, dy=0.5*10**-3, dz=0.5*10**-3, k=230, cp=700, p=2329):
+def make_point(dx=0.5*10**-2, dy=0.5*10**-2, dz=0.5*10**-2, k=230, cp=700, p=2329):
     return [dx, dy, dz, k, cp, p]
 
 def get_dx(p):

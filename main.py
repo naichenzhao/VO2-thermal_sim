@@ -19,24 +19,24 @@ from state_matrix import *
 
 
 # Number of runs
-NUM_CYCLES = 20
+NUM_CYCLES = 20000
 
 # Grid dimensionns
-X_GRID = 200
-Y_GRID = 100
-Z_GRID = 50
+X_GRID = 80
+Y_GRID = 40
+Z_GRID = 20
 
 # Electrostatic Dimensions
-STARTX = 10
-STARTY = 30
+STARTX = 4
+STARTY = 12
 
-X_ESIM = 180
-Y_ESIM = 40
-Z_ESIM = 20
+X_ESIM = 72
+Y_ESIM = 16
+Z_ESIM = 8
 
-CONTACT_LENGTH = 8
-SCALE = 4
-VOLTAGE = '5V'
+CONTACT_LENGTH = 4
+SCALE = 2
+VOLTAGE = '50V'
 
 
 
@@ -70,7 +70,7 @@ def main():
     #  |              Setup Matrix                 |
     #  +-------------------------------------------+
     print("Setting up Matrix... ")
-    dt = 0.0015
+    dt = 1 # Set constant of 1 and allow program to calculate bounds
 
     # Create primary matrices to use
     mat_d = np.zeros((X_GRID, Y_GRID, Z_GRID, 6))
@@ -93,8 +93,10 @@ def main():
     '''Check for min timestep/ stability'''
     min_time = get_min_timestep(mat_d)
     if dt > min_time:
-        print("defined time is too large for stability")
+        print("\n=====================================")
+        print("defined time:", dt, "is too large for stability")
         print("new timestep of", min_time, "has been selected")
+        print("=====================================\n")
         dt = min_time
 
 
@@ -104,7 +106,7 @@ def main():
     mask = None
 
     ''' Set values for heat transfer matrix '''
-    laser_points = [[i, 50] for i in range(18, 182)]
+    laser_points = [[i, 00] for i in range(0, 1)]
     set_heat_mat(mat_h, 0, laser_points)
 
     
@@ -133,8 +135,10 @@ def main():
 
     # check if scaling works
     if X_ESIM % SCALE != 0 or Y_ESIM % SCALE != 0 or Z_ESIM % SCALE != 0 or CONTACT_LENGTH % SCALE != 0:
+        print("\n=====================================")
         print("[ERROR]: INVALID SCALE VAUE")
         print("Thermo dimensions dont work, try changing simulation area")
+        print("=====================================\n")
         quit()
 
     # Make node matrix
@@ -185,8 +189,8 @@ def main():
     
     
     # Run loop
-    p_bar = tqdm(range(NUM_CYCLES), desc="Running Sim")
-    for i in p_bar:
+    bar = tqdm(range(NUM_CYCLES), desc="Running Sim")
+    for i in bar:
         # -------------------------------
         #   Thermal Sim
         # -------------------------------
@@ -199,29 +203,39 @@ def main():
         # -------------------------------
         #   Electrostatic Sim
         # -------------------------------
-        # r_mat = get_res_matrix(mat_t, mat_d[0,0,0,0], STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, SCALE)
+        r_mat = get_res_matrix(mat_t, mat_d[0,0,0,0], STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, SCALE)
 
-        # '''For every N cycles, reset spice to make sure we dotn use too much memory'''
-        # N = 50
-        # if i>0 and i%N == 0 :
-        #     # Gotta ngspice or else theres a memory leak
-        #     ngspice = simulator.factory(circuit).ngspice
-        #     ngspice.remove_circuit()
-        #     ngspice.destroy()
+        '''For every N cycles, reset spice to make sure we dotn use too much memory'''
+        N = 50
+        if i>0 and i%N == 0 :
+            # Gotta ngspice or else theres a memory leak
+            ngspice = simulator.factory(circuit).ngspice
+            ngspice.remove_circuit()
+            ngspice.destroy()
 
-        #     circuit = Circuit('sim')  # Remake the circuit
-        #     circuit.V('input', 'vin', circuit.gnd, VOLTAGE)
+            circuit = Circuit('sim')  # Remake the circuit
+            circuit.V('input', 'vin', circuit.gnd, VOLTAGE)
 
-        #     # Re-create resistor array
-        #     setup_resistors(circuit, r_mat, nodes, CONTACT_LENGTH//SCALE)
-        #     res_heat, simulator, mat_v = get_heat(circuit, r_mat, dv_mat)
+            # Re-create resistor array
+            setup_resistors(circuit, r_mat, nodes, CONTACT_LENGTH//SCALE)
+            res_heat, simulator, mat_v = get_heat(circuit, r_mat, dv_mat)
 
-        # else:
-        #     # Keep using the same simulator
-        #     update_resistors(circuit, r_mat, nodes, CONTACT_LENGTH//SCALE)
-        #     res_heat, simulator, mat_v = get_heat(circuit, r_mat, dv_mat)
 
-        # add_head(mat_t, res_heat, dt, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, SCALE)
+            # print_matrix(mat_v)
+            # print_matrix(r_mat)
+            # print_mat_t(mat_t)
+
+        else:
+            # Keep using the same simulator
+            update_resistors(circuit, r_mat, nodes, CONTACT_LENGTH//SCALE)
+            res_heat, simulator, mat_v = get_heat(circuit, r_mat, dv_mat)
+
+        add_head(mat_t, res_heat, dt, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, SCALE)
+
+
+        # Get probe temperature
+        probe_t = mat_t[X_GRID//2, Y_GRID//2, 0]
+        bar.set_description("Probe Temperature: %i" % probe_t)
         
 
     #  +-------------------------------------------+
@@ -231,8 +245,8 @@ def main():
 
     print("-----------------------------")
 
-    # print_matrix(mat_v)
-    # print_matrix(r_mat)
+    print_matrix(mat_v)
+    print_matrix(r_mat)
     print_mat_t(mat_t)
 
 
@@ -251,7 +265,7 @@ def main():
 
 def print_plane(planes):
     C = 'gist_heat'
-    MAXT = 115
+    MAXT = 400
 
     num_args = len(planes)
     x = int(np.sqrt(num_args))
@@ -259,12 +273,12 @@ def print_plane(planes):
 
     if x ==1 and y == 1:
         p = plt.imshow(np.transpose(planes[0]), extent=[0, X_GRID,
-                                                        0, Y_GRID], cmap='gist_heat', vmax=400)
+                                                        0, Y_GRID], cmap='gist_heat', vmax=MAXT)
         plt.colorbar(p)
         plt.show()
     else:
         fig, axes = plt.subplots(nrows=x, ncols=y)
-        i = 0;
+        i = 0
         for ax in axes.flat:
             pl = np.transpose(planes[i])
             i += 1
@@ -298,8 +312,9 @@ def print_mat_e(mat_t, startx, starty, x, y, contact_length):
     plt.show()
 
 def print_matrix(mat):
-    plt.imshow(np.transpose(mat[:,:,0]), extent=[
+    p = plt.imshow(np.transpose(mat[:,:,0]), extent=[
         0, mat.shape[0], 0, mat.shape[1]], cmap='GnBu')
+    plt.colorbar(p)
     plt.show()
 
 
