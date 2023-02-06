@@ -19,7 +19,7 @@ from state_matrix import *
 
 
 # Number of runs
-NUM_CYCLES = 20000
+NUM_CYCLES = 40000
 
 # Grid dimensionns
 X_GRID = 80
@@ -36,7 +36,7 @@ Z_ESIM = 8
 
 CONTACT_LENGTH = 4
 SCALE = 2
-VOLTAGE = '50V'
+VOLTAGE = '20V'
 
 
 
@@ -220,11 +220,6 @@ def main():
             setup_resistors(circuit, r_mat, nodes, CONTACT_LENGTH//SCALE)
             res_heat, simulator, mat_v = get_heat(circuit, r_mat, dv_mat)
 
-
-            # print_matrix(mat_v)
-            # print_matrix(r_mat)
-            # print_mat_t(mat_t)
-
         else:
             # Keep using the same simulator
             update_resistors(circuit, r_mat, nodes, CONTACT_LENGTH//SCALE)
@@ -232,10 +227,15 @@ def main():
 
         add_head(mat_t, res_heat, dt, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, SCALE)
 
+        # if i%1000 == 0:
+        #     print_matrix(mat_v)
+        #     print_matrix(r_mat)
+        #     print_mat_t(mat_t)
+
 
         # Get probe temperature
-        probe_t = mat_t[X_GRID//2, Y_GRID//2, 0]
-        bar.set_description("Probe Temperature: %i" % probe_t)
+        probe_t = mat_t[X_GRID//2, Y_GRID//2, 0] - (273.15 + 20)
+        bar.set_postfix({'probe temp: ': probe_t})
         
 
     #  +-------------------------------------------+
@@ -265,7 +265,7 @@ def main():
 
 def print_plane(planes):
     C = 'gist_heat'
-    MAXT = 400
+    MAXT = 320
 
     num_args = len(planes)
     x = int(np.sqrt(num_args))
@@ -273,7 +273,7 @@ def print_plane(planes):
 
     if x ==1 and y == 1:
         p = plt.imshow(np.transpose(planes[0]), extent=[0, X_GRID,
-                                                        0, Y_GRID], cmap='gist_heat', vmax=MAXT)
+                                                        0, Y_GRID], cmap='gist_heat')
         plt.colorbar(p)
         plt.show()
     else:
@@ -282,7 +282,7 @@ def print_plane(planes):
         for ax in axes.flat:
             pl = np.transpose(planes[i])
             i += 1
-            im = ax.imshow(pl, extent=[0, X_GRID, 0, Y_GRID], cmap=C, vmax=MAXT)
+            im = ax.imshow(pl, extent=[0, X_GRID, 0, Y_GRID], cmap=C)
             ax.set_title(f'Layer {i}', fontsize=8)
         fig.colorbar(im, ax=axes.ravel().tolist())
 

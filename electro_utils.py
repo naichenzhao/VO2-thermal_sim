@@ -236,13 +236,13 @@ def get_res_matrix(mat_t, L, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, S):
             for k in range(t_scaled.shape[2]):
                 t_scaled[i, j, k] = np.mean(em[S*i:S*(i+1), S*j:S*(j+1), S*k:S*(k+1)])
 
-    r_mat = get_resistivity(t_scaled, alpha=-0.007, r_0=0.1)/(L * 2)
+    r_mat = get_resistivity(t_scaled, alpha=0, r_0=0.1)/(L * 2)
     return r_mat
 
 
 def get_resistivity(M, r_0 = 1.68e-8, alpha = 0.00386, T0 = 293.15):
     T0_mat = np.ones(M.shape) * T0
-    return r_0 * (1 + alpha*(M-T0_mat))
+    return np.maximum(r_0 * (1 + alpha*(M-T0_mat)), np.zeros(M.shape))
 
 
 
