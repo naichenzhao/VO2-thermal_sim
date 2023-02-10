@@ -19,24 +19,24 @@ from state_matrix import *
 
 
 # Number of runs
-NUM_CYCLES = 40000
+NUM_CYCLES = 6888
 
 # Grid dimensionns
-X_GRID = 80
-Y_GRID = 40
-Z_GRID = 20
+X_GRID = 20
+Y_GRID = 1
+Z_GRID = 1 
 
 # Electrostatic Dimensions
-STARTX = 4
-STARTY = 12
+STARTX = 0
+STARTY = 0
 
-X_ESIM = 72
-Y_ESIM = 16
-Z_ESIM = 8
+X_ESIM = 20
+Y_ESIM = 1
+Z_ESIM = 1
 
-CONTACT_LENGTH = 4
-SCALE = 2
-VOLTAGE = '20V'
+CONTACT_LENGTH = 1
+SCALE = 1
+VOLTAGE = 5
 
 
 
@@ -75,7 +75,7 @@ def main():
     # Create primary matrices to use
     mat_d = np.zeros((X_GRID, Y_GRID, Z_GRID, 6))
     mat_t = np.ones((X_GRID, Y_GRID, Z_GRID)) * (273.15 + 20) # Set to 20C
-    mat_h = np.zeros((X_GRID, Y_GRID))
+    h_add = np.zeros((X_GRID, Y_GRID))
 
     # Set default values for data matrix
     for i in range(X_GRID):
@@ -102,27 +102,27 @@ def main():
 
     '''Calculate state transition matrix'''
     a_state, b_state = gen_state_matrix(mat_d, dt)
-    h_state = gen_h_state(mat_d, dt)
+    hstate_t = get_hstate_thermo(mat_d, dt)
     mask = None
 
     ''' Set values for heat transfer matrix '''
-    laser_points = [[i, 00] for i in range(0, 1)]
-    set_heat_mat(mat_h, 0, laser_points)
+    laser_points = [[i, 0] for i in range(0, 2)]
+    set_added_heat(h_add, 0, laser_points)
 
     
     '''Set up boundry Temperatures'''
-    z_heat = 0
-    x_0_plane = [(0, y, z_heat) for y in range(Y_GRID)]
-    x_n_plane = [(X_GRID-1, y, z_heat) for y in range(Y_GRID)]
-    y_n_plane = [(x, Y_GRID-1, z_heat) for x in range(1, X_GRID-1)]
-    POINTS = [*x_0_plane, *x_n_plane, *y_n_plane]
-    mask = set_mat(mat_t, (273.15 + 20), POINTS)
+    # z_heat = 0
+    # x_0_plane = [(0, y, z_heat) for y in range(Y_GRID)]
+    # x_n_plane = [(X_GRID-1, y, z_heat) for y in range(Y_GRID)]
+    # y_n_plane = [(x, Y_GRID-1, z_heat) for x in range(1, X_GRID-1)]
+    # POINTS = [*x_0_plane, *x_n_plane, *y_n_plane]
+    # mask = set_mat(mat_t, (273.15 + 20), POINTS)
 
-    y_0_plane = [(x, 0, z_heat) for x in range(1, X_GRID-1)]
-    POINTS_2 = [*y_0_plane]
-    mask2 = set_mat(mat_t, (273.15 + 20), POINTS_2)
+    # y_0_plane = [(x, 0, z_heat) for x in range(1, X_GRID-1)]
+    # POINTS_2 = [*y_0_plane]
+    # mask2 = set_mat(mat_t, (273.15 + 20), POINTS_2)
 
-    mask = mask + mask2
+    # mask = mask + mask2
 
     if mask is None:
         mask = np.zeros((X_GRID, Y_GRID, Z_GRID))
@@ -150,6 +150,7 @@ def main():
                 nodes[i, j, k, 0] = i
                 nodes[i, j, k, 1] = j
                 nodes[i, j, k, 2] = k
+    hstate_elec = get_hstate_elec(get_selected_area(mat_d, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM), dt)
     
     # Make reistor matrix
     r_mat = get_res_matrix(mat_t, mat_d[0, 0, 0, 0], STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, SCALE)
@@ -157,6 +158,7 @@ def main():
     # setup resistors
     circuit = Circuit('sim')  # Remake the circuit
     circuit.V('input', 'vin', circuit.gnd, VOLTAGE)
+    circuit.Vinput.minus.add_current_probe
     setup_resistors(circuit, r_mat, nodes, CONTACT_LENGTH//SCALE)
 
 
@@ -186,7 +188,7 @@ def main():
     res_heat = np.zeros((X_ESIM//SCALE, Y_ESIM//SCALE, Z_ESIM//SCALE))
     dv_mat = np.zeros((X_ESIM//SCALE, Y_ESIM//SCALE, Z_ESIM//SCALE, 6))
     
-    
+    power_draw = 0
     
     # Run loop
     bar = tqdm(range(NUM_CYCLES), desc="Running Sim")
@@ -196,7 +198,7 @@ def main():
         # -------------------------------
         new_temps = transition_state(mat_t, comp_mat, a_state, b_state).copy()
         mat_t = set_mat_temps(mask, initial_temps, new_temps)
-        apply_heat(mat_t, h_state, mat_h)
+        apply_heat(mat_t, hstate_t, h_add)
 
 
 
@@ -206,7 +208,7 @@ def main():
         r_mat = get_res_matrix(mat_t, mat_d[0,0,0,0], STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, SCALE)
 
         '''For every N cycles, reset spice to make sure we dotn use too much memory'''
-        N = 50
+        N = 2000
         if i>0 and i%N == 0 :
             # Gotta ngspice or else theres a memory leak
             ngspice = simulator.factory(circuit).ngspice
@@ -218,14 +220,14 @@ def main():
 
             # Re-create resistor array
             setup_resistors(circuit, r_mat, nodes, CONTACT_LENGTH//SCALE)
-            res_heat, simulator, mat_v = get_heat(circuit, r_mat, dv_mat)
+            res_heat, simulator, mat_v = get_heat(circuit, r_mat, dv_mat, SCALE)
 
         else:
             # Keep using the same simulator
             update_resistors(circuit, r_mat, nodes, CONTACT_LENGTH//SCALE)
-            res_heat, simulator, mat_v = get_heat(circuit, r_mat, dv_mat)
+            res_heat, simulator, mat_v = get_heat(circuit, r_mat, dv_mat, SCALE)
 
-        add_head(mat_t, res_heat, dt, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, SCALE)
+        add_head(mat_t, res_heat, hstate_elec, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM)
 
         # if i%1000 == 0:
         #     print_matrix(mat_v)
@@ -236,6 +238,9 @@ def main():
         # Get probe temperature
         probe_t = mat_t[X_GRID//2, Y_GRID//2, 0] - (273.15 + 20)
         bar.set_postfix({'probe temp: ': probe_t})
+
+        for node in simulator.operating_point().branches.values():
+            power_draw += dt * float(node) * 5
         
 
     #  +-------------------------------------------+
@@ -245,6 +250,10 @@ def main():
 
     print("-----------------------------")
 
+    total_time = dt * NUM_CYCLES
+
+    print("Circuit power draw:", -power_draw)
+    print("total time that ahs passed:", total_time)
     print_matrix(mat_v)
     print_matrix(r_mat)
     print_mat_t(mat_t)
@@ -273,7 +282,7 @@ def print_plane(planes):
 
     if x ==1 and y == 1:
         p = plt.imshow(np.transpose(planes[0]), extent=[0, X_GRID,
-                                                        0, Y_GRID], cmap='gist_heat')
+                                                        0, Y_GRID], cmap='gist_heat', vmax=350, vmin=293)
         plt.colorbar(p)
         plt.show()
     else:

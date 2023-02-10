@@ -70,17 +70,13 @@ def gen_state_matrix(mat_d, dt):
     return a_state, b_state
 
 
-def gen_h_state(mat_d, dt):
+def get_hstate_thermo(mat_d, dt):
     X_GRID = mat_d.shape[0]
     Y_GRID = mat_d.shape[1]
 
     h_state = np.zeros((X_GRID, Y_GRID), dtype=np.float64)
-
-    for i in range(X_GRID):
-        for j in range(Y_GRID):
-            curr_p = mat_d[i, j, 0]
-            A = curr_p[0] * curr_p[1] * 4  # dx * dy
-            h_state[i, j] = dt/(curr_p[4] * curr_p[5] * A)
+    mass = (8*mat_d[:, :, 0, 0]*mat_d[:, :, 0, 1]*mat_d[:, :, 0, 2])*mat_d[:,:,0,5]
+    h_state = dt/(mass * mat_d[:, :, 0, 4])
 
     return h_state
 

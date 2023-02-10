@@ -45,7 +45,7 @@ def set_mat(t_mat, temp, coordinates):
     return mask
 
 
-def set_heat_mat(h_mat, temp, coordinates):
+def set_added_heat(h_mat, temp, coordinates):
     for curr in coordinates:
         h_mat[curr[0], curr[1]] = temp
 
@@ -77,7 +77,7 @@ def set_point(mat, p, new_val, check=True):
     mat[p[0]][p[1]][p[2]] = new_val
 
 
-def make_point(dx=0.5*10**-2, dy=0.5*10**-2, dz=0.5*10**-2, k=230, cp=700, p=2329):
+def make_point(dx=0.5*10**-3, dy=0.5*10**-3, dz=0.5*10**-3, k=230, cp=700, p=2329):
     return [dx, dy, dz, k, cp, p]
 
 def get_dx(p):

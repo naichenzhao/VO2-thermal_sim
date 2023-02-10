@@ -8,14 +8,12 @@ import numpy as np
 #  |                 Main Functions                 |
 #  +------------------------------------------------+
 
-def get_heat(circuit, r_mat, dv_mat):
+def get_heat(circuit, r_mat, dv_mat, scale):
     # set up variables:
     simulator = circuit.simulator()
     analysis = simulator.operating_point()
 
     volt_matrix = np.zeros(r_mat.shape)
-
-
     for node in analysis.nodes.values():
         if str(node) == 'vin':
             continue
@@ -38,21 +36,29 @@ def get_heat(circuit, r_mat, dv_mat):
     dv_mat[:, :, :Z-1, 4] = volt_matrix[:, :, :Z-1] - volt_matrix[:, :, 1:]
     dv_mat[:, :, 1:, 5] = volt_matrix[:, :, 1:] - volt_matrix[:, :, :Z-1]
     
-    return np.sum( dv_mat * dv_mat, axis=3)/r_mat, simulator, volt_matrix
+    #print(dv_mat)
+    #print(volt_matrix)
+    return size_up(np.sum(dv_mat * dv_mat, axis=3)/(r_mat * 4), scale), simulator, volt_matrix
 
 
-def add_head(mat_t, r_heat, dt, startx, starty, x, y, z, S):
-
-    heat_added = np.zeros((x, y, z))
-    for i in range (r_heat.shape[0]):
-        for j in range (r_heat.shape[1]):
-            for k in range (r_heat.shape[2]):
-                heat_added[S*i:S*(i+1), S*j:S*(j+1), S*k:S*(k+1)] = r_heat[i, j, k]
+def add_head(mat_t, r_heat, hstate, startx, starty, x, y, z):
     endx = startx + x
     endy = starty + y
-    mat_t[startx:endx, starty:endy, 0:z] = mat_t[startx:endx, starty:endy, 0:z] + heat_added * dt
+
+    #print((r_heat*hstate))
+    mat_t[startx:endx, starty:endy, 0:z] = mat_t[startx:endx,starty:endy, 0:z] + (r_heat*hstate)
 
 
+def get_hstate_elec(mat_d, dt):
+    X_GRID = mat_d.shape[0]
+    Y_GRID = mat_d.shape[1]
+    Z_GRID = mat_d.shape[2]
+
+    h_state = np.zeros((X_GRID, Y_GRID, Z_GRID), dtype=np.float64)
+    mass = (8*mat_d[:,:,:,0]*mat_d[:,:,:,1]*mat_d[:,:,:,2])*mat_d[:,:,:,5]
+    h_state = dt/(mass * mat_d[:,:,:,4])
+
+    return h_state
 
 
 
@@ -221,6 +227,24 @@ def get_selected_area(mat, startx, starty, x, y, z):
     endy = starty + y
     return mat[startx:endx, starty:endy, 0:z]
 
+def size_up(m, s):
+    new_m = np.zeros( (m.shape[0]*s, m.shape[1]*s, m.shape[2]*s) )
+    for i in range(m.shape[0]):
+        for j in range(m.shape[1]):
+            for k in range(m.shape[2]):
+                new_m[s*i:s*(i+1), s*j:s*(j+1), s*k:s*(k+1)] = m[i, j, k]
+    return new_m
+
+def size_down(m, s):
+    new_m = np.zeros((m.shape[0]//s, m.shape[1]//s, m.shape[2]//s))
+    for i in range(m.shape[0]//s):
+        for j in range(m.shape[1]//s):
+            for k in range(m.shape[2]//s):
+                new_m[i, j, k] = np.mean(
+                    m[s*i:s*(i+1), s*j:s*(j+1), s*k:s*(k+1)])
+    return new_m
+
+
 
 #  +------------------------------------------------+
 #  |             Resistance Functions               |
@@ -228,15 +252,7 @@ def get_selected_area(mat, startx, starty, x, y, z):
 
 def get_res_matrix(mat_t, L, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, S):
     em = get_selected_area(mat_t, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM)
-
-    t_scaled = np.zeros((em.shape[0]//S, em.shape[1]//S, em.shape[2]//S))
-
-    for i in range(t_scaled.shape[0]):
-        for j in range(t_scaled.shape[1]):
-            for k in range(t_scaled.shape[2]):
-                t_scaled[i, j, k] = np.mean(em[S*i:S*(i+1), S*j:S*(j+1), S*k:S*(k+1)])
-
-    r_mat = get_resistivity(t_scaled, alpha=0, r_0=0.1)/(L * 2)
+    r_mat = get_resistivity(size_down(em, S), alpha=0, r_0=0.1)/(L * 4)
     return r_mat
 
 
