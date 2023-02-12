@@ -19,24 +19,24 @@ from state_matrix import *
 
 
 # Number of runs
-NUM_CYCLES = 6888
+NUM_CYCLES = 6888 # 1 second of time 
 
 # Grid dimensionns
-X_GRID = 20
-Y_GRID = 1
-Z_GRID = 1 
+X_GRID = 80
+Y_GRID = 20
+Z_GRID = 2
 
 # Electrostatic Dimensions
 STARTX = 0
 STARTY = 0
 
-X_ESIM = 20
-Y_ESIM = 1
-Z_ESIM = 1
+X_ESIM = 80
+Y_ESIM = 20
+Z_ESIM = 2
 
-CONTACT_LENGTH = 1
-SCALE = 1
-VOLTAGE = 5
+CONTACT_LENGTH = 2
+SCALE = 2
+VOLTAGE = 25
 
 
 
@@ -150,7 +150,7 @@ def main():
                 nodes[i, j, k, 0] = i
                 nodes[i, j, k, 1] = j
                 nodes[i, j, k, 2] = k
-    hstate_elec = get_hstate_elec(get_selected_area(mat_d, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM), dt)
+    hstate_elec = get_hstate_elec(get_selected_area(mat_d, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM), dt, SCALE)
     
     # Make reistor matrix
     r_mat = get_res_matrix(mat_t, mat_d[0, 0, 0, 0], STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, SCALE)
@@ -240,7 +240,7 @@ def main():
         bar.set_postfix({'probe temp: ': probe_t})
 
         for node in simulator.operating_point().branches.values():
-            power_draw += dt * float(node) * 5
+            power_draw += dt * float(node) * VOLTAGE
         
 
     #  +-------------------------------------------+

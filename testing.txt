@@ -1,0 +1,49 @@
++------------------------------
+| trial 1
++------------------------------
+
+Test conditions
+	- Silicon
+		- 1mm x 1mm x 1mm blocks
+		- k = 230
+		- cp = 700
+		- density = 2329
+	- 80mm (x), 20mm (y), 2mm (z)
+	- 25V difference
+	- 1s total time with 0.00014519859375s timestep
+
+	- Assunme constant temperature
+	- 2x resistor shrink scale
+	- Initial temperature of 273.15 + 20K
+
+
+Results
+	- Final block resistance: 25 ohms
+	- Final temperature: 293.7 K
+	- Recorded power draw: 3.1254 W
+	- Time: 15min 14s
+
+
++------------------------------
+| trial 2
++------------------------------
+
+Test conditions
+	- Silicon
+		- 1mm x 1mm x 1mm blocks
+		- k = 230
+		- cp = 700
+		- density = 2329
+	- 80mm (x), 20mm (y), 2mm (z)
+	- 25V difference
+	- 1s total time with 0.00014519859375s timestep
+
+	- Assunme constant temperature
+	- 2x resistor shrink scale
+	- Initial temperature of 273.15 + 20K
+
+
+Results
+	- Final block resistance: 23.94 - 23.97
+	- Final temperature: 293.8 K
+	- Recorded power draw: 3.192 W

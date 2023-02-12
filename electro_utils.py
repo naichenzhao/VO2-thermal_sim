@@ -49,13 +49,13 @@ def add_head(mat_t, r_heat, hstate, startx, starty, x, y, z):
     mat_t[startx:endx, starty:endy, 0:z] = mat_t[startx:endx,starty:endy, 0:z] + (r_heat*hstate)
 
 
-def get_hstate_elec(mat_d, dt):
+def get_hstate_elec(mat_d, dt, s):
     X_GRID = mat_d.shape[0]
     Y_GRID = mat_d.shape[1]
     Z_GRID = mat_d.shape[2]
 
     h_state = np.zeros((X_GRID, Y_GRID, Z_GRID), dtype=np.float64)
-    mass = (8*mat_d[:,:,:,0]*mat_d[:,:,:,1]*mat_d[:,:,:,2])*mat_d[:,:,:,5]
+    mass = (8*mat_d[:,:,:,0]*mat_d[:,:,:,1]*mat_d[:,:,:,2])*mat_d[:,:,:,5]*(s**3)
     h_state = dt/(mass * mat_d[:,:,:,4])
 
     return h_state
@@ -252,7 +252,7 @@ def size_down(m, s):
 
 def get_res_matrix(mat_t, L, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, S):
     em = get_selected_area(mat_t, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM)
-    r_mat = get_resistivity(size_down(em, S), alpha=0, r_0=0.1)/(L * 4)
+    r_mat = get_resistivity(size_down(em, S), alpha=-0.07, r_0=0.1)/(L * S * 4)
     return r_mat
 
 
