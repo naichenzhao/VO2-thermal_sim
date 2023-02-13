@@ -38,7 +38,7 @@ Test conditions
 	- 25V difference
 	- 1s total time with 0.00014519859375s timestep
 
-	- Assunme constant temperature
+	- Assunme nonconstant resistance
 	- 2x resistor shrink scale
 	- Initial temperature of 273.15 + 20K
 
@@ -47,3 +47,40 @@ Results
 	- Final block resistance: 23.94 - 23.97
 	- Final temperature: 293.8 K
 	- Recorded power draw: 3.192 W
+	- Time: 15min 14s
+
+
+
++------------------------------
+| trial 3
++------------------------------
+
+Test conditions
+	- Silicon
+		- 1mm x 1mm x 1mm blocks
+		- k = 230
+		- cp = 700
+		- density = 2329
+	- Thermo: 200mm (x), 80mm (y), 6mm(z)
+		- Assume edge temperatures are unchanged
+	- Electro: 140mm (x), 40mm (y), 4mm (z)
+		- Pad lengths of 10
+	- 25V difference
+	- 1s total time with 0.00014519859375s timestep
+
+	- Assunme nonconstant resistance
+	- 2x resistor shrink scale
+	- Initial temperature of 273.15 + 20K
+
+
+Results
+	- Final block resistance:24.824 - 24.958
+	- Final temperature: 293.1 - 293.3. Probe = 0.101 
+	- Recorded power draw: 8.021 W
+	- Time: 9hrs 31mins (Though I left it on overnight. Actual might be closer to 4 hours)
+
+
+
+
+
+

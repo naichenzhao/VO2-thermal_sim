@@ -22,19 +22,19 @@ from state_matrix import *
 NUM_CYCLES = 6888 # 1 second of time 
 
 # Grid dimensionns
-X_GRID = 80
-Y_GRID = 20
-Z_GRID = 2
+X_GRID = 200
+Y_GRID = 80
+Z_GRID = 6
 
 # Electrostatic Dimensions
-STARTX = 0
-STARTY = 0
+STARTX = 30
+STARTY = 20
 
-X_ESIM = 80
-Y_ESIM = 20
-Z_ESIM = 2
+X_ESIM = 140
+Y_ESIM = 40
+Z_ESIM = 4
 
-CONTACT_LENGTH = 2
+CONTACT_LENGTH = 10
 SCALE = 2
 VOLTAGE = 25
 
@@ -111,18 +111,18 @@ def main():
 
     
     '''Set up boundry Temperatures'''
-    # z_heat = 0
-    # x_0_plane = [(0, y, z_heat) for y in range(Y_GRID)]
-    # x_n_plane = [(X_GRID-1, y, z_heat) for y in range(Y_GRID)]
-    # y_n_plane = [(x, Y_GRID-1, z_heat) for x in range(1, X_GRID-1)]
-    # POINTS = [*x_0_plane, *x_n_plane, *y_n_plane]
-    # mask = set_mat(mat_t, (273.15 + 20), POINTS)
+    z_heat = 0
+    x_0_plane = [(0, y, z_heat) for y in range(Y_GRID)]
+    x_n_plane = [(X_GRID-1, y, z_heat) for y in range(Y_GRID)]
+    y_n_plane = [(x, Y_GRID-1, z_heat) for x in range(1, X_GRID-1)]
+    POINTS = [*x_0_plane, *x_n_plane, *y_n_plane]
+    mask = set_mat(mat_t, (273.15 + 20), POINTS)
 
-    # y_0_plane = [(x, 0, z_heat) for x in range(1, X_GRID-1)]
-    # POINTS_2 = [*y_0_plane]
-    # mask2 = set_mat(mat_t, (273.15 + 20), POINTS_2)
+    y_0_plane = [(x, 0, z_heat) for x in range(1, X_GRID-1)]
+    POINTS_2 = [*y_0_plane]
+    mask2 = set_mat(mat_t, (273.15 + 20), POINTS_2)
 
-    # mask = mask + mask2
+    mask = mask + mask2
 
     if mask is None:
         mask = np.zeros((X_GRID, Y_GRID, Z_GRID))
@@ -282,7 +282,7 @@ def print_plane(planes):
 
     if x ==1 and y == 1:
         p = plt.imshow(np.transpose(planes[0]), extent=[0, X_GRID,
-                                                        0, Y_GRID], cmap='gist_heat', vmax=350, vmin=293)
+                                                        0, Y_GRID], cmap='gist_heat', vmin=293.15)
         plt.colorbar(p)
         plt.show()
     else:
