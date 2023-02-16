@@ -5,6 +5,7 @@ import PySpice.Logging.Logging as Logging
 import numpy as np
 from tqdm import tqdm
 import pandas as pd
+import os
 from matplotlib import pyplot as plt
 from thermo_utils import *
 from electro_utils import *
@@ -20,7 +21,7 @@ from state_matrix import *
 
 
 # Number of runs
-NUM_CYCLES = 2000  # 1 second of time
+NUM_CYCLES = 100  # 1 second of time
 
 # Grid dimensionns
 X_GRID = 250
@@ -37,32 +38,10 @@ Z_ESIM = 2
 
 CONTACT_LENGTH = 16
 SCALE = 2
-VOLTAGE = 0
+VOLTAGE = 30
 
 
 LASER_POWER = 0.05/50
-
-'''
-
-
-# Grid dimensionns
-X_GRID = 250
-Y_GRID = 250
-Z_GRID = 50
-
-# Electrostatic Dimensions
-STARTX = 104
-STARTY = 121
-
-X_ESIM = 26 + 16
-Y_ESIM = 8
-Z_ESIM = 2
-
-CONTACT_LENGTH = 8
-SCALE = 2
-VOLTAGE = 25
-
-'''
 
 
 
@@ -137,18 +116,14 @@ def main():
 
     
     '''Set up boundry Temperatures'''
-    z_heat = 0
-    x_0_plane = [(0, y, z_heat) for y in range(Y_GRID)]
-    x_n_plane = [(X_GRID-1, y, z_heat) for y in range(Y_GRID)]
-    y_n_plane = [(x, Y_GRID-1, z_heat) for x in range(1, X_GRID-1)]
-    POINTS = [*x_0_plane, *x_n_plane, *y_n_plane]
-    mask = set_mat(mat_t, (273.15 + 20), POINTS)
+    mask = np.zeros((X_GRID, Y_GRID, Z_GRID))
 
-    y_0_plane = [(x, 0, z_heat) for x in range(1, X_GRID-1)]
-    POINTS_2 = [*y_0_plane]
-    mask2 = set_mat(mat_t, (273.15 + 20), POINTS_2)
-
-    mask = mask + mask2
+    # set edges to 0
+    mask[0, :, :] = 1
+    mask[X_GRID-1, :, :] = 1
+    mask[:, 0, :] = 1
+    mask[:, Y_GRID-1, :] = 1
+    mask[:, :, Z_GRID-1] = 1
 
     if mask is None:
         mask = np.zeros((X_GRID, Y_GRID, Z_GRID))
@@ -179,13 +154,13 @@ def main():
     hstate_elec = get_hstate_elec(get_selected_area(mat_d, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM), dt, SCALE)
     
     # Make reistor matrix
-    r_mat = get_res_matrix(mat_t, mat_d[0, 0, 0, 0], STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, SCALE)
+    mat_r = get_res_matrix(mat_t, mat_d[0, 0, 0, 0], STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, SCALE)
     
     # setup resistors
     circuit = Circuit('sim')  # Remake the circuit
     circuit.V('input', 'vin', circuit.gnd, VOLTAGE)
     circuit.Vinput.minus.add_current_probe
-    setup_resistors(circuit, r_mat, nodes, CONTACT_LENGTH//SCALE)
+    setup_resistors(circuit, mat_r, nodes, CONTACT_LENGTH//SCALE)
 
 
     #Print the initial Conditions
@@ -215,6 +190,8 @@ def main():
     dv_mat = np.zeros((X_ESIM//SCALE, Y_ESIM//SCALE, Z_ESIM//SCALE, 6))
     
     power_draw = 0
+
+    mat_v = np.zeros((X_ESIM//SCALE, Y_ESIM//SCALE, Z_ESIM//SCALE))
     
     # Run loop
     bar = tqdm(range(NUM_CYCLES), desc="Running Sim")
@@ -222,46 +199,46 @@ def main():
         # -------------------------------
         #   Thermal Sim
         # -------------------------------
-        new_temps = transition_state(mat_t, comp_mat, a_state, b_state).copy()
+        transition_state(mat_t, comp_mat, a_state, b_state, new_temps)
         mat_t = set_mat_temps(mask, initial_temps, new_temps)
         apply_heat(mat_t, hstate_t, h_add)
 
 
+        
+        # # -------------------------------
+        # #   Electrostatic Sim
+        # # -------------------------------
+        # mat_r = get_res_matrix(mat_t, mat_d[0,0,0,0], STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, SCALE)
 
-        # -------------------------------
-        #   Electrostatic Sim
-        # -------------------------------
-        r_mat = get_res_matrix(mat_t, mat_d[0,0,0,0], STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, SCALE)
+        # '''For every N cycles, reset spice to make sure we dotn use too much memory'''
+        # N = 1000
+        # if i>0 and i%N == 0 :
+        #     # Gotta ngspice or else theres a memory leak
+        #     ngspice = simulator.factory(circuit).ngspice
+        #     ngspice.remove_circuit()
+        #     ngspice.destroy()
 
-        '''For every N cycles, reset spice to make sure we dotn use too much memory'''
-        N = 1000
-        if i>0 and i%N == 0 :
-            # Gotta ngspice or else theres a memory leak
-            ngspice = simulator.factory(circuit).ngspice
-            ngspice.remove_circuit()
-            ngspice.destroy()
+        #     circuit = Circuit('sim')  # Remake the circuit
+        #     circuit.V('input', 'vin', circuit.gnd, VOLTAGE)
 
-            circuit = Circuit('sim')  # Remake the circuit
-            circuit.V('input', 'vin', circuit.gnd, VOLTAGE)
+        #     # Re-create resistor array
+        #     setup_resistors(circuit, mat_r, nodes, CONTACT_LENGTH//SCALE)
+        #     res_heat, simulator, mat_v = get_heat(circuit, mat_r, dv_mat, SCALE)
 
-            # Re-create resistor array
-            setup_resistors(circuit, r_mat, nodes, CONTACT_LENGTH//SCALE)
-            res_heat, simulator, mat_v = get_heat(circuit, r_mat, dv_mat, SCALE)
+        # else:
+        #     # Keep using the same simulator
+        #     update_resistors(circuit, mat_r, nodes, CONTACT_LENGTH//SCALE)
+        #     res_heat, simulator, mat_v = get_heat(circuit, mat_r, dv_mat, SCALE)
 
-        else:
-            # Keep using the same simulator
-            update_resistors(circuit, r_mat, nodes, CONTACT_LENGTH//SCALE)
-            res_heat, simulator, mat_v = get_heat(circuit, r_mat, dv_mat, SCALE)
-
-        add_head(mat_t, res_heat, hstate_elec, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM)
+        # add_head(mat_t, res_heat, hstate_elec, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM)
 
 
-        # Get probe temperature
-        probe_t = mat_t[X_GRID//2, Y_GRID//2, 0] - (273.15 + 20)
-        bar.set_postfix({'probe temp: ': probe_t})
+        # # Get probe temperature
+        # probe_t = mat_t[X_GRID//2, Y_GRID//2, 0] - (273.15 + 20)
+        # bar.set_postfix({'probe temp: ': probe_t})
 
-        for node in simulator.operating_point().branches.values():
-            power_draw += dt * float(node) * VOLTAGE
+        # for node in simulator.operating_point().branches.values():
+        #     power_draw += dt * float(node) * VOLTAGE
         
 
     #  +-------------------------------------------+
@@ -271,12 +248,9 @@ def main():
 
     print("Saving temperature data... ")
     print("-----------------------------")
+    save_data(mat_t, mat_r, mat_v)
 
-    # Save temperature
-    for i in range(Z_GRID):
-        DF = pd.DataFrame(np.transpose(mat_t[:,:,i]))
-        DF.to_csv("sim_output/temps_" + str(i) +
-                  ".csv", header=False, index=False)
+    
 
 
 
@@ -287,7 +261,7 @@ def main():
     print("Circuit power draw:", -power_draw)
     print("total time that has passed:", total_time)
     print_matrix(mat_v)
-    print_matrix(r_mat)
+    print_matrix(mat_r)
     print_mat_t(mat_t)
 
 
@@ -330,6 +304,27 @@ def print_plane(planes):
     plt.show()
 
 
+def save_data(t, r, v):
+    filepath = "sim_output"
+    # Save temperature
+    for i in range(t.shape[2]):
+        DF = pd.DataFrame(np.transpose(t[:, :, i]))
+        file_name = os.path.join( filepath, "final_temps", "temps_" + str(i) + ".csv")
+        DF.to_csv(file_name, header=False, index=False)
+        
+    # Save resistance
+    for i in range(r.shape[2]):
+        DF = pd.DataFrame(np.transpose(r[:, :, i]))
+        file_name = os.path.join(
+            filepath, "final_resistance", "res_" + str(i) + ".csv")
+        DF.to_csv(file_name, header=False, index=False)
+    
+    # Save voltage
+    for i in range(v.shape[2]):
+        DF = pd.DataFrame(np.transpose(v[:, :, i]))
+        file_name = os.path.join(
+            filepath, "final_voltage", "v_" + str(i) + ".csv")
+        DF.to_csv(file_name, header=False, index=False)
 
 def print_mat_t(mat_t):
     grid1 = get_z_temp(mat_t)

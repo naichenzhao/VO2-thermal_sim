@@ -4,6 +4,7 @@ import PySpice.Logging.Logging as Logging
 import numpy as np
 
 
+
 #  +------------------------------------------------+
 #  |                 Main Functions                 |
 #  +------------------------------------------------+
@@ -252,13 +253,13 @@ def size_down(m, s):
 
 def get_res_matrix(mat_t, L, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, S):
     em = get_selected_area(mat_t, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM)
-    r_mat = get_resistivity(size_down(em, S), alpha=0, r_0=0.1)/(L * S * 4)
+    r_mat = get_resistivity(size_down(em, S))/(L * S * 4)
     return r_mat
 
 
-def get_resistivity(M, r_0 = 1.68e-8, alpha = 0.00386, T0 = 293.15):
-    T0_mat = np.ones(M.shape) * T0
-    return np.maximum(r_0 * (1 + alpha*(M-T0_mat)), np.zeros(M.shape))
+def get_resistivity(M):
+    r_mat = (9.225e-11) * M**5 + (-1.665e-7) * M**4 + (0.0001994) * M**3 + (-0.04253) * M**2 + (7.511) * M + (-525.9)
+    return np.maximum(r_mat, np.zeros(M.shape))
 
 
 

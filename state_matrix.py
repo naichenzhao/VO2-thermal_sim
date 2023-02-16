@@ -1,5 +1,6 @@
 import numpy as np
 from thermo_utils import *
+import threading
 
 
 def gen_state_matrix(mat_d, dt):
@@ -81,28 +82,109 @@ def get_hstate_thermo(mat_d, dt):
     return h_state
 
 
-def transition_state(mat_t, comp_mat, a_state, b_state):
+def transition_state(mat_t, comp_mat, a_state, b_state, out):
     X_GRID = mat_t.shape[0]
     Y_GRID = mat_t.shape[1]
     Z_GRID = mat_t.shape[2]
 
-    # ---------- Calculate X points ----------
-    comp_mat[:X_GRID-1, :, :, 0] = mat_t[1:, :, :]
-    comp_mat[1:, :, :, 1] = mat_t[:X_GRID-1, :, :]
+    ''' Previous way of calculating the comp_mat
+    '''
+    # # ---------- Calculate X points ----------
+    # comp_mat[:X_GRID-1, :, :, 0] = mat_t[1:, :, :]
+    # comp_mat[1:, :, :, 1] = mat_t[:X_GRID-1, :, :]
     
 
-    # ---------- Calculate Y points ----------
-    comp_mat[:, :Y_GRID-1, :, 2] = mat_t[:, 1:, :]
-    comp_mat[:, 1:, :, 3] = mat_t[:, :Y_GRID-1, :]
+    # # ---------- Calculate Y points ----------
+    # comp_mat[:, :Y_GRID-1, :, 2] = mat_t[:, 1:, :]
+    # comp_mat[:, 1:, :, 3] = mat_t[:, :Y_GRID-1, :]
     
 
-    # ---------- Calculate Z points ----------
-    comp_mat[:, :, :Z_GRID-1, 4] = mat_t[:, :, 1:]
-    comp_mat[:, :, 1:, 5] = mat_t[:, :, :Z_GRID-1]
-    
+    # # ---------- Calculate Z points ----------
+    # comp_mat[:, :, :Z_GRID-1, 4] = mat_t[:, :, 1:]
+    # comp_mat[:, :, 1:, 5] = mat_t[:, :, :Z_GRID-1]
 
-    return mat_t * a_state + np.sum(comp_mat*b_state, axis=3)
+
+    ''' Previous way(s) of getting the resut
+    '''
+    # sum_mat = np.sum(comp_mat*b_state, axis=3)
+    # return pyfma.fma(mat_t, a_state, sum_mat)
+    # return ne.evaluate('a*b+c', local_dict={'a': mat_t, 'b': a_state, 'c': np.sum(comp_mat*b_state, axis=3)})
+    # return mat_t * a_state + np.sum(comp_mat*b_state, axis=3)
+
+    '''New approach to calculation uses multi-threaded approach to speed up calculations'''
+    par_comp_mat(comp_mat, mat_t, func=eq)
+    par_fmadd(mat_t, a_state, comp_mat, b_state, 10, out)
 
 
 def set_mat_temps(mask, initial, new):
     return np.where(mask > 0, initial, new)
+
+
+def fmadd(a, b, c, d, out):
+    out[:] = a*b+np.sum(c*d, axis=3)
+
+
+def eq(a, b):
+    a[:] = b[:]
+
+
+def par_fmadd(a, b, c, d, numCores, out, func=fmadd):
+
+    threads = []
+    pl = a.shape[0]//numCores
+    for i in range(numCores - 1):
+        th = threading.Thread(target=func, args=(
+            a[i*pl:(i+1)*pl, :, :], 
+            b[i*pl:(i+1)*pl, :, :], 
+            c[i*pl:(i+1)*pl, :, :, :], 
+            d[i*pl:(i+1)*pl, :, :, :], 
+            out[i*pl:(i+1)*pl, :, :]))
+        th.start()
+        threads.append(th)
+
+    for th in threads:
+        th.join()
+
+
+def par_comp_mat(comp_mat, mat_t, func=eq):
+
+    X_GRID = mat_t.shape[0]
+    Y_GRID = mat_t.shape[1]
+    Z_GRID = mat_t.shape[2]
+
+    threads = []
+
+    # ---------- Calculate X points ----------
+    th0 = threading.Thread(target=func, args=(
+        comp_mat[:X_GRID-1, :, :, 0], mat_t[1:, :, :] ))
+    th1 = threading.Thread(target=func, args=(
+        comp_mat[1:, :, :, 1], mat_t[:X_GRID-1, :, :]))
+    th0.start()
+    th1.start()
+    threads.append(th0)
+    threads.append(th1)
+
+    # ---------- Calculate X points ----------
+    th2 = threading.Thread(target=func, args=(
+        comp_mat[:, :Y_GRID-1, :, 2], mat_t[:, 1:, :]))
+    th3 = threading.Thread(target=func, args=(
+        comp_mat[:, 1:, :, 3], mat_t[:, :Y_GRID-1, :]))
+    th2.start()
+    th3.start()
+    threads.append(th2)
+    threads.append(th3)
+
+    # ---------- Calculate X points ----------
+    th4 = threading.Thread(target=func, args=(
+        comp_mat[:, :, :Z_GRID-1, 4], mat_t[:, :, 1:]))
+    th5 = threading.Thread(target=func, args=(
+        comp_mat[:, :, 1:, 5], mat_t[:, :, :Z_GRID-1]))
+    th4.start()
+    th5.start()
+    threads.append(th4)
+    threads.append(th5)
+
+    for th in threads:
+        th.join()
+
+
