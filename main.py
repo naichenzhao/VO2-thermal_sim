@@ -4,6 +4,7 @@ import PySpice.Logging.Logging as Logging
 
 import numpy as np
 from tqdm import tqdm
+import pandas as pd
 from matplotlib import pyplot as plt
 from thermo_utils import *
 from electro_utils import *
@@ -19,24 +20,49 @@ from state_matrix import *
 
 
 # Number of runs
-NUM_CYCLES = 6888 # 1 second of time 
+NUM_CYCLES = 2000  # 1 second of time
 
 # Grid dimensionns
-X_GRID = 200
-Y_GRID = 80
-Z_GRID = 6
+X_GRID = 250
+Y_GRID = 250
+Z_GRID = 50
 
 # Electrostatic Dimensions
-STARTX = 30
-STARTY = 20
+STARTX = 84
+STARTY = 117
 
-X_ESIM = 140
-Y_ESIM = 40
-Z_ESIM = 4
+X_ESIM = 82
+Y_ESIM = 16
+Z_ESIM = 2
 
-CONTACT_LENGTH = 10
+CONTACT_LENGTH = 16
+SCALE = 2
+VOLTAGE = 0
+
+
+LASER_POWER = 0.05/50
+
+'''
+
+
+# Grid dimensionns
+X_GRID = 250
+Y_GRID = 250
+Z_GRID = 50
+
+# Electrostatic Dimensions
+STARTX = 104
+STARTY = 121
+
+X_ESIM = 26 + 16
+Y_ESIM = 8
+Z_ESIM = 2
+
+CONTACT_LENGTH = 8
 SCALE = 2
 VOLTAGE = 25
+
+'''
 
 
 
@@ -106,8 +132,8 @@ def main():
     mask = None
 
     ''' Set values for heat transfer matrix '''
-    laser_points = [[i, 0] for i in range(0, 2)]
-    set_added_heat(h_add, 0, laser_points)
+    laser_points = [[i, 125] for i in range(100, 151)]
+    set_added_heat(h_add, LASER_POWER, laser_points)
 
     
     '''Set up boundry Temperatures'''
@@ -208,7 +234,7 @@ def main():
         r_mat = get_res_matrix(mat_t, mat_d[0,0,0,0], STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, SCALE)
 
         '''For every N cycles, reset spice to make sure we dotn use too much memory'''
-        N = 2000
+        N = 1000
         if i>0 and i%N == 0 :
             # Gotta ngspice or else theres a memory leak
             ngspice = simulator.factory(circuit).ngspice
@@ -229,11 +255,6 @@ def main():
 
         add_head(mat_t, res_heat, hstate_elec, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM)
 
-        # if i%1000 == 0:
-        #     print_matrix(mat_v)
-        #     print_matrix(r_mat)
-        #     print_mat_t(mat_t)
-
 
         # Get probe temperature
         probe_t = mat_t[X_GRID//2, Y_GRID//2, 0] - (273.15 + 20)
@@ -246,14 +267,25 @@ def main():
     #  +-------------------------------------------+
     #  |           Print Values                    |
     #  +-------------------------------------------+
-    print("Printing final result... ")
+    
 
+    print("Saving temperature data... ")
+    print("-----------------------------")
+
+    # Save temperature
+    for i in range(Z_GRID):
+        DF = pd.DataFrame(np.transpose(mat_t[:,:,i]))
+        DF.to_csv("sim_output/temps_" + str(i) +
+                  ".csv", header=False, index=False)
+
+
+
+    print("Printing final result... ")
     print("-----------------------------")
 
     total_time = dt * NUM_CYCLES
-
     print("Circuit power draw:", -power_draw)
-    print("total time that ahs passed:", total_time)
+    print("total time that has passed:", total_time)
     print_matrix(mat_v)
     print_matrix(r_mat)
     print_mat_t(mat_t)

@@ -252,7 +252,7 @@ def size_down(m, s):
 
 def get_res_matrix(mat_t, L, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, S):
     em = get_selected_area(mat_t, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM)
-    r_mat = get_resistivity(size_down(em, S), alpha=-0.07, r_0=0.1)/(L * S * 4)
+    r_mat = get_resistivity(size_down(em, S), alpha=0, r_0=0.1)/(L * S * 4)
     return r_mat
 
 
