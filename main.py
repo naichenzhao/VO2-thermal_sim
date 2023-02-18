@@ -163,16 +163,17 @@ def main():
                 nodes[i, j, k, 0] = i
                 nodes[i, j, k, 1] = j
                 nodes[i, j, k, 2] = k
-    hstate_elec = get_hstate_elec(get_selected_area(mat_d, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM), dt, SCALE)
+    hstate_elec_np = get_hstate_elec(get_selected_area(mat_d, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM), dt, SCALE)
+    hstate_elec = hstate_elec_np.type(torch.float32)
     
     # Make reistor matrix
     mat_r = get_res_matrix(mat_t, mat_d[0, 0, 0, 0], STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, SCALE)
     
-    # setup resistors
-    circuit = Circuit('sim')  # Remake the circuit
-    circuit.V('input', 'vin', circuit.gnd, VOLTAGE)
-    circuit.Vinput.minus.add_current_probe
-    setup_resistors(circuit, mat_r, nodes, CONTACT_LENGTH//SCALE)
+    # # setup resistors
+    # circuit = Circuit('sim')  # Remake the circuit
+    # circuit.V('input', 'vin', circuit.gnd, VOLTAGE)
+    # circuit.Vinput.minus.add_current_probe
+    # setup_resistors(circuit, mat_r, nodes, CONTACT_LENGTH//SCALE)
 
 
     # #Print the initial Conditions
@@ -203,17 +204,21 @@ def main():
     
     power_draw = 0
 
+    ref_length = mat_d[0, 0, 0, 0]
+
     mat_v = torch.zeros((X_ESIM//SCALE, Y_ESIM//SCALE, Z_ESIM//SCALE))
 
-    torch.Tensor(new_temps).to(device=device)
-    torch.Tensor(initial_temps).to(device=device)
-    torch.Tensor(comp_mat).to(device=device)
-    torch.Tensor(mat_t).to(device=device)
-    torch.Tensor(hstate_t).to(device=device)
-    torch.Tensor(h_add).to(device=device)
+    new_temps = new_temps.to(device=device)
+    initial_temps = initial_temps.to(device=device)
+    comp_mat = comp_mat.to(device=device)
+    mat_t = mat_t.to(device=device)
+    hstate_t = hstate_t.to(device=device)
+    h_add = h_add.to(device=device)
+    mask = mask.to(device=device)
 
-    torch.Tensor(a_state).to(device=device)
-    torch.Tensor(b_state).to(device=device)
+    a_state = a_state.to(device=device)
+    b_state = b_state.to(device=device)
+
 
     # Run loop
     bar = tqdm(range(NUM_CYCLES), desc="Running Sim")
@@ -230,15 +235,16 @@ def main():
         # # -------------------------------
         # #   Electrostatic Sim
         # # -------------------------------
-        # mat_r = get_res_matrix(mat_t, mat_d[0,0,0,0], STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, SCALE)
+        # mat_r = get_res_matrix(mat_t, ref_length, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, SCALE)
 
         # '''For every N cycles, reset spice to make sure we dotn use too much memory'''
         # N = 1000
-        # if i>0 and i%N == 0 :
+        # if i%N == 0 :
         #     # Gotta ngspice or else theres a memory leak
-        #     ngspice = simulator.factory(circuit).ngspice
-        #     ngspice.remove_circuit()
-        #     ngspice.destroy()
+        #     if (i != 0) :
+        #         ngspice = simulator.factory(circuit).ngspice
+        #         ngspice.remove_circuit()
+        #         ngspice.destroy()
 
         #     circuit = Circuit('sim')  # Remake the circuit
         #     circuit.V('input', 'vin', circuit.gnd, VOLTAGE)
@@ -262,6 +268,16 @@ def main():
         # for node in simulator.operating_point().branches.values():
         #     power_draw += dt * float(node) * VOLTAGE
         
+    new_temps = new_temps.to(device="cpu")
+    initial_temps = initial_temps.to(device="cpu")
+    comp_mat = comp_mat.to(device="cpu")
+    mat_t = mat_t.to(device="cpu")
+    hstate_t = hstate_t.to(device="cpu")
+    h_add = h_add.to(device="cpu")
+    mask = mask.to(device="cpu")
+
+    a_state = a_state.to(device="cpu")
+    b_state = b_state.to(device="cpu")
 
     #  +-------------------------------------------+
     #  |           Print Values                    |
