@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 import numexpr as ne
 
 
@@ -23,36 +24,9 @@ def get_min_timestep(mat_d):
 #  |               Set Point Functions              |
 #  +------------------------------------------------+
 
-def set_points(t_mat, temps, coordinates):
-    mask = np.zeros(t_mat.shape)
-
-    for i in range(len(temps)):
-        curr_loc = coordinates[i]
-        curr_temp = temps[i]
-        set_point(t_mat, curr_loc, curr_temp)
-        set_point(mask, curr_loc, 1)
-
-    return mask
-
-
-def set_mat(t_mat, temp, coordinates):
-    mask = np.zeros(t_mat.shape)
-
-    for i in range(len(coordinates)):
-        curr_loc = coordinates[i]
-        set_point(t_mat, curr_loc, temp)
-        set_point(mask, curr_loc, 1)
-
-    return mask
-
-
 def set_added_heat(h_mat, temp, coordinates):
     for curr in coordinates:
         h_mat[curr[0], curr[1]] = temp
-
-
-
-
 
 
 
@@ -79,7 +53,7 @@ def set_point(mat, p, new_val, check=True):
 
 
 def make_point(dx=0.5*2*10**-6, dy=0.5*2*10**-6, dz=0.5*2*10**-6, k=230, cp=700, p=2329):
-    return [dx, dy, dz, k, cp, p]
+    return torch.tensor([dx, dy, dz, k, cp, p])
 
 def get_dx(p):
     return p[0]

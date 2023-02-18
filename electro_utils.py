@@ -2,6 +2,7 @@ from PySpice import *
 from PySpice.Spice.Netlist import Circuit
 import PySpice.Logging.Logging as Logging
 import numpy as np
+import torch
 
 
 
@@ -14,7 +15,7 @@ def get_heat(circuit, r_mat, dv_mat, scale):
     simulator = circuit.simulator()
     analysis = simulator.operating_point()
 
-    volt_matrix = np.zeros(r_mat.shape)
+    volt_matrix = torch.zeros(r_mat.shape)
     for node in analysis.nodes.values():
         if str(node) == 'vin':
             continue
@@ -39,7 +40,7 @@ def get_heat(circuit, r_mat, dv_mat, scale):
     
     #print(dv_mat)
     #print(volt_matrix)
-    return size_up(np.sum(dv_mat * dv_mat, axis=3)/(r_mat * 4), scale), simulator, volt_matrix
+    return size_up(torch.sum(dv_mat * dv_mat, axis=3)/(r_mat * 4), scale), simulator, volt_matrix
 
 
 def add_head(mat_t, r_heat, hstate, startx, starty, x, y, z):
@@ -55,7 +56,7 @@ def get_hstate_elec(mat_d, dt, s):
     Y_GRID = mat_d.shape[1]
     Z_GRID = mat_d.shape[2]
 
-    h_state = np.zeros((X_GRID, Y_GRID, Z_GRID), dtype=np.float64)
+    h_state = np.zeros((X_GRID, Y_GRID, Z_GRID))
     mass = (8*mat_d[:,:,:,0]*mat_d[:,:,:,1]*mat_d[:,:,:,2])*mat_d[:,:,:,5]*(s**3)
     h_state = dt/(mass * mat_d[:,:,:,4])
 
@@ -229,7 +230,7 @@ def get_selected_area(mat, startx, starty, x, y, z):
     return mat[startx:endx, starty:endy, 0:z]
 
 def size_up(m, s):
-    new_m = np.zeros( (m.shape[0]*s, m.shape[1]*s, m.shape[2]*s) )
+    new_m = torch.zeros( (m.shape[0]*s, m.shape[1]*s, m.shape[2]*s) )
     for i in range(m.shape[0]):
         for j in range(m.shape[1]):
             for k in range(m.shape[2]):
@@ -237,11 +238,11 @@ def size_up(m, s):
     return new_m
 
 def size_down(m, s):
-    new_m = np.zeros((m.shape[0]//s, m.shape[1]//s, m.shape[2]//s))
+    new_m = torch.zeros((m.shape[0]//s, m.shape[1]//s, m.shape[2]//s))
     for i in range(m.shape[0]//s):
         for j in range(m.shape[1]//s):
             for k in range(m.shape[2]//s):
-                new_m[i, j, k] = np.mean(
+                new_m[i, j, k] = torch.mean(
                     m[s*i:s*(i+1), s*j:s*(j+1), s*k:s*(k+1)])
     return new_m
 
@@ -259,7 +260,7 @@ def get_res_matrix(mat_t, L, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, S):
 
 def get_resistivity(M):
     r_mat = (9.225e-11) * M**5 + (-1.665e-7) * M**4 + (0.0001994) * M**3 + (-0.04253) * M**2 + (7.511) * M + (-525.9)
-    return np.maximum(r_mat, np.zeros(M.shape))
+    return torch.maximum(r_mat, torch.zeros(M.shape))
 
 
 

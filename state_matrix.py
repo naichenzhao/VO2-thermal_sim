@@ -1,6 +1,7 @@
 import numpy as np
 from thermo_utils import *
 import threading
+import torch
 
 
 def gen_state_matrix(mat_d, dt):
@@ -16,8 +17,8 @@ def gen_state_matrix(mat_d, dt):
     Y_GRID = mat_d.shape[1]
     Z_GRID = mat_d.shape[2]
 
-    a_state = np.zeros((X_GRID, Y_GRID, Z_GRID), dtype=np.float64)
-    b_state = np.zeros((X_GRID, Y_GRID, Z_GRID, 6), dtype=np.float64)
+    a_state = np.zeros((X_GRID, Y_GRID, Z_GRID))
+    b_state = np.zeros((X_GRID, Y_GRID, Z_GRID, 6))
 
     for i in range(X_GRID):
         for j in range(Y_GRID):
@@ -75,7 +76,7 @@ def get_hstate_thermo(mat_d, dt):
     X_GRID = mat_d.shape[0]
     Y_GRID = mat_d.shape[1]
 
-    h_state = np.zeros((X_GRID, Y_GRID), dtype=np.float64)
+    h_state = torch.zeros((X_GRID, Y_GRID))
     mass = (8*mat_d[:, :, 0, 0]*mat_d[:, :, 0, 1]*mat_d[:, :, 0, 2])*mat_d[:,:,0,5]
     h_state = dt/(mass * mat_d[:, :, 0, 4])
 
@@ -89,19 +90,19 @@ def transition_state(mat_t, comp_mat, a_state, b_state, out):
 
     ''' Previous way of calculating the comp_mat
     '''
-    # # ---------- Calculate X points ----------
-    # comp_mat[:X_GRID-1, :, :, 0] = mat_t[1:, :, :]
-    # comp_mat[1:, :, :, 1] = mat_t[:X_GRID-1, :, :]
+    # ---------- Calculate X points ----------
+    comp_mat[:X_GRID-1, :, :, 0] = mat_t[1:, :, :]
+    comp_mat[1:, :, :, 1] = mat_t[:X_GRID-1, :, :]
     
 
-    # # ---------- Calculate Y points ----------
-    # comp_mat[:, :Y_GRID-1, :, 2] = mat_t[:, 1:, :]
-    # comp_mat[:, 1:, :, 3] = mat_t[:, :Y_GRID-1, :]
+    # ---------- Calculate Y points ----------
+    comp_mat[:, :Y_GRID-1, :, 2] = mat_t[:, 1:, :]
+    comp_mat[:, 1:, :, 3] = mat_t[:, :Y_GRID-1, :]
     
 
-    # # ---------- Calculate Z points ----------
-    # comp_mat[:, :, :Z_GRID-1, 4] = mat_t[:, :, 1:]
-    # comp_mat[:, :, 1:, 5] = mat_t[:, :, :Z_GRID-1]
+    # ---------- Calculate Z points ----------
+    comp_mat[:, :, :Z_GRID-1, 4] = mat_t[:, :, 1:]
+    comp_mat[:, :, 1:, 5] = mat_t[:, :, :Z_GRID-1]
 
 
     ''' Previous way(s) of getting the resut
@@ -109,19 +110,19 @@ def transition_state(mat_t, comp_mat, a_state, b_state, out):
     # sum_mat = np.sum(comp_mat*b_state, axis=3)
     # return pyfma.fma(mat_t, a_state, sum_mat)
     # return ne.evaluate('a*b+c', local_dict={'a': mat_t, 'b': a_state, 'c': np.sum(comp_mat*b_state, axis=3)})
-    # return mat_t * a_state + np.sum(comp_mat*b_state, axis=3)
+    out[:] =  mat_t * a_state + torch.sum(comp_mat*b_state, axis=3)
 
-    '''New approach to calculation uses multi-threaded approach to speed up calculations'''
-    par_comp_mat(comp_mat, mat_t, func=eq)
-    par_fmadd(mat_t, a_state, comp_mat, b_state, 10, out)
+    # '''New approach to calculation uses multi-threaded approach to speed up calculations'''
+    # par_comp_mat(comp_mat, mat_t, func=eq)
+    # par_fmadd(mat_t, a_state, comp_mat, b_state, 10, out)
 
 
 def set_mat_temps(mask, initial, new):
-    return np.where(mask > 0, initial, new)
+    return torch.where(mask > 0, initial, new)
 
 
 def fmadd(a, b, c, d, out):
-    out[:] = a*b+np.sum(c*d, axis=3)
+    out[:] = a*b+torch.sum(c*d, axis=3)
 
 
 def eq(a, b):

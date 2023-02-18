@@ -2,14 +2,18 @@ from PySpice import *
 from PySpice.Spice.Netlist import Circuit
 import PySpice.Logging.Logging as Logging
 
+import torch
 import numpy as np
 from tqdm import tqdm
 import pandas as pd
 import os
 from matplotlib import pyplot as plt
+
 from thermo_utils import *
 from electro_utils import *
 from state_matrix import *
+
+
 
 
 
@@ -19,6 +23,8 @@ from state_matrix import *
 #  |                                                                  |
 #  +------------------------------------------------------------------+
 
+# Set type of TF acceleration
+device = "mps"
 
 # Number of runs
 NUM_CYCLES = 1000  # 1 second of time
@@ -26,7 +32,7 @@ NUM_CYCLES = 1000  # 1 second of time
 # Grid dimensionns
 X_GRID = 250
 Y_GRID = 250
-Z_GRID = 50
+Z_GRID = 4
 
 # Electrostatic Dimensions
 STARTX = 84
@@ -78,26 +84,26 @@ def main():
     dt = 1 # Set constant of 1 and allow program to calculate bounds
 
     # Create primary matrices to use
-    mat_d = np.zeros((X_GRID, Y_GRID, Z_GRID, 6))
-    mat_t = np.ones((X_GRID, Y_GRID, Z_GRID)) * (273.15 + 20) # Set to 20C
-    h_add = np.zeros((X_GRID, Y_GRID))
+    mat_d_np = np.zeros((X_GRID, Y_GRID, Z_GRID, 6))
+    mat_t = torch.ones((X_GRID, Y_GRID, Z_GRID)) * (273.15 + 20)  # Set to 20C
+    h_add = torch.zeros((X_GRID, Y_GRID))
 
     # Set default values for data matrix
-    mat_d[:, :, :] = make_point()
+    mat_d_np[:, :, :] = make_point()
     # for i in range(X_GRID):
     #     for j in range(Y_GRID):
     #         for k in range(Z_GRID):
     #             set_point(mat_d, (i, j, k), make_point())
 
     
-    
+    mat_d = torch.tensor(mat_d_np)
     #  +-------------------------------------------+
     #  |           Setup Thermo                    |
     #  +-------------------------------------------+
     print("Setting up Thermo... ")
     
     '''Check for min timestep/ stability'''
-    min_time = get_min_timestep(mat_d)
+    min_time = get_min_timestep(mat_d_np)
     if dt > min_time:
         print("\n=====================================")
         print("defined time:", dt, "is too large for stability")
@@ -107,8 +113,13 @@ def main():
 
 
     '''Calculate state transition matrix'''
-    a_state, b_state = gen_state_matrix(mat_d, dt)
-    hstate_t = get_hstate_thermo(mat_d, dt)
+    a_state_np, b_state_np = gen_state_matrix(mat_d_np, dt)
+    hstate_t_np = get_hstate_thermo(mat_d_np, dt)
+
+    a_state = torch.tensor(a_state_np).type(torch.float32)
+    b_state = torch.tensor(b_state_np).type(torch.float32)
+    hstate_t = torch.tensor(hstate_t_np).type(torch.float32)
+    
     mask = None
 
     ''' Set values for heat transfer matrix '''
@@ -117,7 +128,7 @@ def main():
 
     
     '''Set up boundry Temperatures'''
-    mask = np.zeros((X_GRID, Y_GRID, Z_GRID))
+    mask = torch.zeros((X_GRID, Y_GRID, Z_GRID))
 
     # set edges to 0
     mask[0, :, :] = 1
@@ -127,7 +138,7 @@ def main():
     mask[:, :, Z_GRID-1] = 1
 
     if mask is None:
-        mask = np.zeros((X_GRID, Y_GRID, Z_GRID))
+        mask = torch.zeros((X_GRID, Y_GRID, Z_GRID))
 
 
     #  +-------------------------------------------+
@@ -144,8 +155,8 @@ def main():
         quit()
 
     # Make node matrix
-    nodes = np.zeros((X_ESIM//SCALE, Y_ESIM//SCALE,
-                     Z_ESIM//SCALE, 3), dtype=np.int8)
+    nodes = torch.zeros((X_ESIM//SCALE, Y_ESIM//SCALE,
+                     Z_ESIM//SCALE, 3), dtype=torch.int8)
     for i in range(X_ESIM//SCALE):
         for j in range(Y_ESIM//SCALE):
             for k in range(Z_ESIM//SCALE):
@@ -164,12 +175,12 @@ def main():
     setup_resistors(circuit, mat_r, nodes, CONTACT_LENGTH//SCALE)
 
 
-    #Print the initial Conditions
-    print("Printing initial conditions")
-    print("    Printing Thermal Conditions")
-    print_mat_t(mat_t)
-    print("    Printing Electrostatic Conditions")
-    print_mat_e(mat_t, STARTX, STARTY, X_ESIM, Y_ESIM, CONTACT_LENGTH)
+    # #Print the initial Conditions
+    # print("Printing initial conditions")
+    # print("    Printing Thermal Conditions")
+    # print_mat_t(mat_t)
+    # print("    Printing Electrostatic Conditions")
+    # print_mat_e(mat_t, STARTX, STARTY, X_ESIM, Y_ESIM, CONTACT_LENGTH)
 
 
 
@@ -183,17 +194,27 @@ def main():
     print("Running loop... ")
 
     # Create loop helpers
-    new_temps = np.zeros((X_GRID, Y_GRID, Z_GRID))
-    initial_temps = mat_t.copy()
+    new_temps = torch.zeros((X_GRID, Y_GRID, Z_GRID))
+    initial_temps = torch.tensor(np.array(mat_t).copy())
 
-    comp_mat = np.zeros((X_GRID, Y_GRID, Z_GRID, 6))
-    res_heat = np.zeros((X_ESIM//SCALE, Y_ESIM//SCALE, Z_ESIM//SCALE))
-    dv_mat = np.zeros((X_ESIM//SCALE, Y_ESIM//SCALE, Z_ESIM//SCALE, 6))
+    comp_mat = torch.zeros((X_GRID, Y_GRID, Z_GRID, 6))
+    res_heat = torch.zeros((X_ESIM//SCALE, Y_ESIM//SCALE, Z_ESIM//SCALE))
+    dv_mat = torch.zeros((X_ESIM//SCALE, Y_ESIM//SCALE, Z_ESIM//SCALE, 6))
     
     power_draw = 0
 
-    mat_v = np.zeros((X_ESIM//SCALE, Y_ESIM//SCALE, Z_ESIM//SCALE))
-    
+    mat_v = torch.zeros((X_ESIM//SCALE, Y_ESIM//SCALE, Z_ESIM//SCALE))
+
+    torch.Tensor(new_temps).to(device=device)
+    torch.Tensor(initial_temps).to(device=device)
+    torch.Tensor(comp_mat).to(device=device)
+    torch.Tensor(mat_t).to(device=device)
+    torch.Tensor(hstate_t).to(device=device)
+    torch.Tensor(h_add).to(device=device)
+
+    torch.Tensor(a_state).to(device=device)
+    torch.Tensor(b_state).to(device=device)
+
     # Run loop
     bar = tqdm(range(NUM_CYCLES), desc="Running Sim")
     for i in bar:
@@ -288,7 +309,7 @@ def print_plane(planes):
     y = int(np.ceil(num_args/x))
 
     if x ==1 and y == 1:
-        p = plt.imshow(np.transpose(planes[0]), extent=[0, X_GRID,
+        p = plt.imshow(torch.t(planes[0]), extent=[0, X_GRID,
                                                         0, Y_GRID], cmap='gist_heat', vmin=293.15)
         plt.colorbar(p)
         plt.show()
@@ -296,7 +317,7 @@ def print_plane(planes):
         fig, axes = plt.subplots(nrows=x, ncols=y)
         i = 0
         for ax in axes.flat:
-            pl = np.transpose(planes[i])
+            pl = torch.t(planes[i])
             i += 1
             im = ax.imshow(pl, extent=[0, X_GRID, 0, Y_GRID], cmap=C)
             ax.set_title(f'Layer {i}', fontsize=8)
@@ -306,50 +327,60 @@ def print_plane(planes):
 
 
 def save_data(t, r, v):
+    # t = np.array(t_tf)
+    # r = np.array(r_tf)
+    # v = np.array(v_tf)
+
+
+
+
     filepath = "sim_output"
     # Save temperature
     for i in range(t.shape[2]):
-        DF = pd.DataFrame(np.transpose(t[:, :, i]))
+        DF = pd.DataFrame(torch.t(t[:, :, i]))
         file_name = os.path.join( filepath, "final_temps", "temps_" + str(i) + ".csv")
         DF.to_csv(file_name, header=False, index=False)
         
     # Save resistance
     for i in range(r.shape[2]):
-        DF = pd.DataFrame(np.transpose(r[:, :, i]))
+        DF = pd.DataFrame(torch.t(r[:, :, i]))
         file_name = os.path.join(
             filepath, "final_resistance", "res_" + str(i) + ".csv")
         DF.to_csv(file_name, header=False, index=False)
     
     # Save voltage
     for i in range(v.shape[2]):
-        DF = pd.DataFrame(np.transpose(v[:, :, i]))
+        DF = pd.DataFrame(torch.t(v[:, :, i]))
         file_name = os.path.join(
             filepath, "final_voltage", "v_" + str(i) + ".csv")
         DF.to_csv(file_name, header=False, index=False)
 
 def print_mat_t(mat_t):
+    # mat_t = np.array(mat_t_tf)
     grid1 = get_z_temp(mat_t)
     # grid2 = get_z_temp(mat_t, 1)
     # grid3 = get_z_temp(mat_t, 2)
     # grid4 = get_z_temp(mat_t, 3)
-    print_plane(np.array([grid1]))
+    print_plane([grid1])
 
 
 def print_mat_e(mat_t, startx, starty, x, y, contact_length):
+    # mat_t = np.array(mat_t_tf)
     endx = startx + x
     endy = starty + y
 
-    printmat = np.zeros((mat_t.shape[0], mat_t.shape[1]))
+    printmat = torch.zeros((mat_t.shape[0], mat_t.shape[1]))
     printmat[startx:endx, starty:endy] = 1
     printmat[startx:startx+contact_length, starty:endy] = 2
     printmat[endx-contact_length:endx, starty:endy] = 2
 
 
-    plt.imshow(np.transpose(printmat), extent=[0,X_GRID,0,Y_GRID], cmap='plasma')
+    plt.imshow(torch.t(printmat), extent=[0,X_GRID,0,Y_GRID], cmap='plasma')
     plt.show()
 
 def print_matrix(mat):
-    p = plt.imshow(np.transpose(mat[:,:,0]), extent=[
+    # mat = np.array(mat_tf)
+    p = plt.imshow(torch.t(mat[:,:,0]), extent=[
         0, mat.shape[0], 0, mat.shape[1]], cmap='GnBu')
     plt.colorbar(p)
     plt.show()
