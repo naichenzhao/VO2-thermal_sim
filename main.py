@@ -21,7 +21,7 @@ from state_matrix import *
 
 
 # Number of runs
-NUM_CYCLES = 100  # 1 second of time
+NUM_CYCLES = 1000  # 1 second of time
 
 # Grid dimensionns
 X_GRID = 250
@@ -83,10 +83,11 @@ def main():
     h_add = np.zeros((X_GRID, Y_GRID))
 
     # Set default values for data matrix
-    for i in range(X_GRID):
-        for j in range(Y_GRID):
-            for k in range(Z_GRID):
-                set_point(mat_d, (i, j, k), make_point())
+    mat_d[:, :, :] = make_point()
+    # for i in range(X_GRID):
+    #     for j in range(Y_GRID):
+    #         for k in range(Z_GRID):
+    #             set_point(mat_d, (i, j, k), make_point())
 
     
     
