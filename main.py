@@ -24,7 +24,27 @@ from state_matrix import *
 #  +------------------------------------------------------------------+
 
 # Set type of TF acceleration
-device = "mps"
+'''Setup device for PyTorch calculation for Thermo
+    cpu: Uses the computer's CPU. 
+        - This is required if you want to also have electrostatic sim
+        - Can support 64-bit floating point
+        - Generally slower than the other two ptions
+
+    cuda: Uses Nvidia's CUDA GPU processors
+        - This is only available on GPUs with Nvidia graphics
+        - This supports 64-bit floating point
+        - Probably the fatsets option
+
+    mps: Uses apple's metal GPU acceleration
+        - This is what is used to test GPU acceleration
+        - Only supports 32-bit floating point (sadge)
+        - Similar to cuda but 32-bit is not accurate enough for our puroses
+    
+    For testing purposes, I am usually using gpu. For running the actual trial, its probably
+        best to use CUDA if available for ~7.5x speed increase from my testing
+
+'''
+device = "cuda"
 
 # Number of runs
 NUM_CYCLES = 1000  # 1 second of time
@@ -32,7 +52,7 @@ NUM_CYCLES = 1000  # 1 second of time
 # Grid dimensionns
 X_GRID = 250
 Y_GRID = 250
-Z_GRID = 4
+Z_GRID = 50
 
 # Electrostatic Dimensions
 STARTX = 84
@@ -81,22 +101,19 @@ def main():
     #  |              Setup Matrix                 |
     #  +-------------------------------------------+
     print("Setting up Matrix... ")
-    dt = 1 # Set constant of 1 and allow program to calculate bounds
+    dt = 1.15e-12  # Set timestep, should be within bounds
 
     # Create primary matrices to use
     mat_d_np = np.zeros((X_GRID, Y_GRID, Z_GRID, 6))
     mat_t = torch.ones((X_GRID, Y_GRID, Z_GRID)) * (273.15 + 20)  # Set to 20C
     h_add = torch.zeros((X_GRID, Y_GRID))
+    print("     Finished creating empty matrices ")
 
     # Set default values for data matrix
     mat_d_np[:, :, :] = make_point()
-    # for i in range(X_GRID):
-    #     for j in range(Y_GRID):
-    #         for k in range(Z_GRID):
-    #             set_point(mat_d, (i, j, k), make_point())
-
-    
     mat_d = torch.tensor(mat_d_np)
+    print("     Finished setting points ")
+
     #  +-------------------------------------------+
     #  |           Setup Thermo                    |
     #  +-------------------------------------------+
@@ -110,21 +127,23 @@ def main():
         print("new timestep of", min_time, "has been selected")
         print("=====================================\n")
         dt = min_time
-
+    print("     - Finished checking timestep ")
 
     '''Calculate state transition matrix'''
     a_state_np, b_state_np = gen_state_matrix(mat_d_np, dt)
     hstate_t_np = get_hstate_thermo(mat_d_np, dt)
 
-    a_state = torch.tensor(a_state_np).type(torch.float32)
-    b_state = torch.tensor(b_state_np).type(torch.float32)
-    hstate_t = torch.tensor(hstate_t_np).type(torch.float32)
+    a_state = torch.tensor(a_state_np).type(torch.float64)
+    b_state = torch.tensor(b_state_np).type(torch.float64)
+    hstate_t = torch.tensor(hstate_t_np).type(torch.float64)
+    print("     - Finished creating a, b, and hstate matrices ")
     
     mask = None
 
     ''' Set values for heat transfer matrix '''
     laser_points = [[i, 125] for i in range(100, 151)]
     set_added_heat(h_add, LASER_POWER, laser_points)
+    print("     - Finished setting laser points ")
 
     
     '''Set up boundry Temperatures'''
@@ -139,6 +158,8 @@ def main():
 
     if mask is None:
         mask = torch.zeros((X_GRID, Y_GRID, Z_GRID))
+
+    print("     - Finished setting boundary temps ")
 
 
     #  +-------------------------------------------+
@@ -165,15 +186,18 @@ def main():
                 nodes[i, j, k, 2] = k
     hstate_elec_np = get_hstate_elec(get_selected_area(mat_d, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM), dt, SCALE)
     hstate_elec = hstate_elec_np.type(torch.float32)
+    print("     - Finished setting electro matrices ")
     
     # Make reistor matrix
     mat_r = get_res_matrix(mat_t, mat_d[0, 0, 0, 0], STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, SCALE)
+    print("     - Finished getting initial resistances ")
     
-    # # setup resistors
-    # circuit = Circuit('sim')  # Remake the circuit
-    # circuit.V('input', 'vin', circuit.gnd, VOLTAGE)
-    # circuit.Vinput.minus.add_current_probe
-    # setup_resistors(circuit, mat_r, nodes, CONTACT_LENGTH//SCALE)
+    # setup resistors
+    circuit = Circuit('sim')  # Remake the circuit
+    circuit.V('input', 'vin', circuit.gnd, VOLTAGE)
+    circuit.Vinput.minus.add_current_probe
+    setup_resistors(circuit, mat_r, nodes, CONTACT_LENGTH//SCALE)
+    print("     - Finished creating initial circuit ")
 
 
     # #Print the initial Conditions
@@ -198,16 +222,19 @@ def main():
     new_temps = torch.zeros((X_GRID, Y_GRID, Z_GRID))
     initial_temps = torch.tensor(np.array(mat_t).copy())
 
+    # pre-allocate matrices used for calculation
     comp_mat = torch.zeros((X_GRID, Y_GRID, Z_GRID, 6))
     res_heat = torch.zeros((X_ESIM//SCALE, Y_ESIM//SCALE, Z_ESIM//SCALE))
     dv_mat = torch.zeros((X_ESIM//SCALE, Y_ESIM//SCALE, Z_ESIM//SCALE, 6))
     
     power_draw = 0
-
     ref_length = mat_d[0, 0, 0, 0]
 
+    # Create matrix of voltages
     mat_v = torch.zeros((X_ESIM//SCALE, Y_ESIM//SCALE, Z_ESIM//SCALE))
+    print("     - Finished Loop setup")
 
+    # Move all matrices to device 
     new_temps = new_temps.to(device=device)
     initial_temps = initial_temps.to(device=device)
     comp_mat = comp_mat.to(device=device)
@@ -219,6 +246,8 @@ def main():
     a_state = a_state.to(device=device)
     b_state = b_state.to(device=device)
 
+    print("     - Finished Moving to pyTorch device")
+    print("Running Loop using device:", device)
 
     # Run loop
     bar = tqdm(range(NUM_CYCLES), desc="Running Sim")
@@ -231,7 +260,9 @@ def main():
         apply_heat(mat_t, hstate_t, h_add)
 
 
-        
+        '''Commenting out the Electro Sim so we can use CUDA acceleration for purely thermo   '''
+
+        '''=============== START COMMENT ==============='''
         # # -------------------------------
         # #   Electrostatic Sim
         # # -------------------------------
@@ -267,6 +298,8 @@ def main():
 
         # for node in simulator.operating_point().branches.values():
         #     power_draw += dt * float(node) * VOLTAGE
+
+        '''=============== END COMMENT ==============='''
         
     new_temps = new_temps.to(device="cpu")
     initial_temps = initial_temps.to(device="cpu")
