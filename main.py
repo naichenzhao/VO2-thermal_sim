@@ -23,7 +23,7 @@ from state_matrix import *
 #  |                                                                  |
 #  +------------------------------------------------------------------+
 
-# Set type of TF acceleration
+# Set type of PyTorch acceleration
 '''Setup device for PyTorch calculation for Thermo
     cpu: Uses the computer's CPU. 
         - This is required if you want to also have electrostatic sim
@@ -37,14 +37,14 @@ from state_matrix import *
 
     mps: Uses apple's metal GPU acceleration
         - This is what is used to test GPU acceleration
-        - Only supports 32-bit floating point (sadge)
+        - Only supports 32-bit floating point (sadge) (Only used for testing, not for simulation)
         - Similar to cuda but 32-bit is not accurate enough for our puroses
     
     For testing purposes, I am usually using gpu. For running the actual trial, its probably
         best to use CUDA if available for ~7.5x speed increase from my testing
 
 '''
-device = "cuda"
+device = "cpu"
 
 # Number of runs
 NUM_CYCLES = 1000  # 1 second of time
@@ -66,8 +66,15 @@ CONTACT_LENGTH = 16
 SCALE = 2
 VOLTAGE = 30
 
+# Coordinates for the laser
+LASER_W = 125
+LASER_MIN = 100
+LASER_MAX = 151
+
 
 LASER_POWER = 0.05/50
+
+RUN_ELECTRO_SIM = True
 
 
 
@@ -101,7 +108,7 @@ def main():
     #  |              Setup Matrix                 |
     #  +-------------------------------------------+
     print("Setting up Matrix... ")
-    dt = 1.15e-12  # Set timestep, should be within bounds
+    dt = 1 #1.15e-12  # Set timestep, should be within bounds
 
     # Create primary matrices to use
     mat_d_np = np.zeros((X_GRID, Y_GRID, Z_GRID, 6))
@@ -133,15 +140,20 @@ def main():
     a_state_np, b_state_np = gen_state_matrix(mat_d_np, dt)
     hstate_t_np = get_hstate_thermo(mat_d_np, dt)
 
-    a_state = torch.tensor(a_state_np).type(torch.float64)
-    b_state = torch.tensor(b_state_np).type(torch.float64)
-    hstate_t = torch.tensor(hstate_t_np).type(torch.float64)
+    if device == 'mps' :
+        a_state = torch.tensor(a_state_np).type(torch.float32)
+        b_state = torch.tensor(b_state_np).type(torch.float32)
+        hstate_t = torch.tensor(hstate_t_np).type(torch.float32)
+    else:
+        a_state = torch.tensor(a_state_np).type(torch.float64)
+        b_state = torch.tensor(b_state_np).type(torch.float64)
+        hstate_t = torch.tensor(hstate_t_np).type(torch.float64)
     print("     - Finished creating a, b, and hstate matrices ")
     
     mask = None
 
     ''' Set values for heat transfer matrix '''
-    laser_points = [[i, 125] for i in range(100, 151)]
+    laser_points = [[i, LASER_W] for i in range(LASER_MIN, LASER_MAX)]
     set_added_heat(h_add, LASER_POWER, laser_points)
     print("     - Finished setting laser points ")
 
@@ -161,43 +173,43 @@ def main():
 
     print("     - Finished setting boundary temps ")
 
+    if RUN_ELECTRO_SIM:
+        #  +-------------------------------------------+
+        #  |           Setup Electrostatics            |
+        #  +-------------------------------------------+
+        print("Setting up Electrostatics... ")
 
-    #  +-------------------------------------------+
-    #  |           Setup Electrostatics            |
-    #  +-------------------------------------------+
-    print("Setting up Electrostatics... ")
+        # check if scaling works
+        if X_ESIM % SCALE != 0 or Y_ESIM % SCALE != 0 or Z_ESIM % SCALE != 0 or CONTACT_LENGTH % SCALE != 0:
+            print("\n=====================================")
+            print("[ERROR]: INVALID SCALE VAUE")
+            print("Thermo dimensions dont work, try changing simulation area")
+            print("=====================================\n")
+            quit()
 
-    # check if scaling works
-    if X_ESIM % SCALE != 0 or Y_ESIM % SCALE != 0 or Z_ESIM % SCALE != 0 or CONTACT_LENGTH % SCALE != 0:
-        print("\n=====================================")
-        print("[ERROR]: INVALID SCALE VAUE")
-        print("Thermo dimensions dont work, try changing simulation area")
-        print("=====================================\n")
-        quit()
-
-    # Make node matrix
-    nodes = torch.zeros((X_ESIM//SCALE, Y_ESIM//SCALE,
-                     Z_ESIM//SCALE, 3), dtype=torch.int8)
-    for i in range(X_ESIM//SCALE):
-        for j in range(Y_ESIM//SCALE):
-            for k in range(Z_ESIM//SCALE):
-                nodes[i, j, k, 0] = i
-                nodes[i, j, k, 1] = j
-                nodes[i, j, k, 2] = k
-    hstate_elec_np = get_hstate_elec(get_selected_area(mat_d, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM), dt, SCALE)
-    hstate_elec = hstate_elec_np.type(torch.float32)
-    print("     - Finished setting electro matrices ")
-    
-    # Make reistor matrix
-    mat_r = get_res_matrix(mat_t, mat_d[0, 0, 0, 0], STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, SCALE)
-    print("     - Finished getting initial resistances ")
-    
-    # setup resistors
-    circuit = Circuit('sim')  # Remake the circuit
-    circuit.V('input', 'vin', circuit.gnd, VOLTAGE)
-    circuit.Vinput.minus.add_current_probe
-    setup_resistors(circuit, mat_r, nodes, CONTACT_LENGTH//SCALE)
-    print("     - Finished creating initial circuit ")
+        # Make node matrix
+        nodes = np.zeros((X_ESIM//SCALE, Y_ESIM//SCALE,
+                        Z_ESIM//SCALE, 3))
+        for i in range(X_ESIM//SCALE):
+            for j in range(Y_ESIM//SCALE):
+                for k in range(Z_ESIM//SCALE):
+                    nodes[i, j, k, 0] = i
+                    nodes[i, j, k, 1] = j
+                    nodes[i, j, k, 2] = k
+        hstate_elec_np = get_hstate_elec(get_selected_area(mat_d, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM), dt, SCALE)
+        hstate_elec = hstate_elec_np.type(torch.float32)
+        print("     - Finished setting electro matrices ")
+        
+        # Make reistor matrix
+        mat_r = get_res_matrix(mat_t, mat_d[0, 0, 0, 0], STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, SCALE)
+        print("     - Finished getting initial resistances ")
+        
+        # setup resistors
+        circuit = Circuit('sim')  # Remake the circuit
+        circuit.V('input', 'vin', circuit.gnd, VOLTAGE)
+        circuit.Vinput.minus.add_current_probe
+        setup_resistors(circuit, mat_r.numpy(), nodes, CONTACT_LENGTH//SCALE)
+        print("     - Finished creating initial circuit ")
 
 
     # #Print the initial Conditions
@@ -261,43 +273,46 @@ def main():
 
 
         '''Commenting out the Electro Sim so we can use CUDA acceleration for purely thermo   '''
+        if RUN_ELECTRO_SIM:
+            '''=============== START COMMENT ==============='''
+            # -------------------------------
+            #   Electrostatic Sim
+            # -------------------------------
+            mat_r = get_res_matrix(mat_t, ref_length, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, SCALE)
 
-        '''=============== START COMMENT ==============='''
-        # # -------------------------------
-        # #   Electrostatic Sim
-        # # -------------------------------
-        # mat_r = get_res_matrix(mat_t, ref_length, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, SCALE)
+            '''For every N cycles, reset spice to make sure we dont use too much memory'''
+            N = 1000
+            if i%N == 0 :
+                # Gotta ngspice or else theres a memory leak
+                if (i != 0) :
+                    ngspice = simulator.factory(circuit).ngspice
+                    ngspice.remove_circuit()
+                    ngspice.destroy()
 
-        # '''For every N cycles, reset spice to make sure we dotn use too much memory'''
-        # N = 1000
-        # if i%N == 0 :
-        #     # Gotta ngspice or else theres a memory leak
-        #     if (i != 0) :
-        #         ngspice = simulator.factory(circuit).ngspice
-        #         ngspice.remove_circuit()
-        #         ngspice.destroy()
+                circuit = Circuit('sim')  # Remake the circuit
+                circuit.V('input', 'vin', circuit.gnd, VOLTAGE)
+                
 
-        #     circuit = Circuit('sim')  # Remake the circuit
-        #     circuit.V('input', 'vin', circuit.gnd, VOLTAGE)
+                # Re-create resistor array
+                setup_resistors(circuit, mat_r, nodes, CONTACT_LENGTH//SCALE)
 
-        #     # Re-create resistor array
-        #     setup_resistors(circuit, mat_r, nodes, CONTACT_LENGTH//SCALE)
-        #     res_heat, simulator, mat_v = get_heat(circuit, mat_r, dv_mat, SCALE)
+                res_heat, simulator, mat_v = get_heat(circuit, mat_r, dv_mat, SCALE)
 
-        # else:
-        #     # Keep using the same simulator
-        #     update_resistors(circuit, mat_r, nodes, CONTACT_LENGTH//SCALE)
-        #     res_heat, simulator, mat_v = get_heat(circuit, mat_r, dv_mat, SCALE)
+            else:
+                # Keep using the same simulator
+                update_resistors(circuit, mat_r, nodes, CONTACT_LENGTH//SCALE)
+                res_heat, simulator, mat_v = get_heat(circuit, mat_r, dv_mat, SCALE)
 
-        # add_head(mat_t, res_heat, hstate_elec, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM)
+            add_heat(mat_t, res_heat, hstate_elec, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM)
 
 
-        # # Get probe temperature
-        # probe_t = mat_t[X_GRID//2, Y_GRID//2, 0] - (273.15 + 20)
-        # bar.set_postfix({'probe temp: ': probe_t})
+        # Get probe temperature
+        probe_t = mat_t[X_GRID//2, Y_GRID//2, 0] - (273.15 + 20)
+        bar.set_postfix({'probe temp: ': probe_t})
 
-        # for node in simulator.operating_point().branches.values():
-        #     power_draw += dt * float(node) * VOLTAGE
+        if RUN_ELECTRO_SIM:
+            for node in simulator.operating_point().branches.values():
+                power_draw += dt * float(node) * VOLTAGE
 
         '''=============== END COMMENT ==============='''
         
@@ -319,7 +334,11 @@ def main():
 
     print("Saving temperature data... ")
     print("-----------------------------")
-    save_data(mat_t, mat_r, mat_v)
+
+    if RUN_ELECTRO_SIM:
+        save_data(mat_t, mat_r, mat_v)
+    else:
+        save_data(mat_t, torch.zeros((10, 10, 10)), mat_v)
 
     
 
@@ -332,8 +351,10 @@ def main():
     print("Circuit power draw:", -power_draw)
     print("total time that has passed:", total_time)
     print_matrix(mat_v)
-    print_matrix(mat_r)
     print_mat_t(mat_t)
+
+    if RUN_ELECTRO_SIM:
+        print_matrix(mat_r)
 
 
 

@@ -15,12 +15,13 @@ def get_heat(circuit, r_mat, dv_mat, scale):
     simulator = circuit.simulator()
     analysis = simulator.operating_point()
 
-    volt_matrix = torch.zeros(r_mat.shape)
+    volt_matrix = torch.zeros(r_mat.shape, dtype=torch.float64)
     for node in analysis.nodes.values():
         if str(node) == 'vin':
             continue
         currP = str(node).split('/')
-        volt_matrix[int(currP[0]), int(currP[1]), int(currP[2])] = float(node)
+        volt_matrix[int(float(currP[0])), int(float(currP[1])), int(float(currP[2]))] = float(node)
+
     
     X = r_mat.shape[0]
     Y = r_mat.shape[1]
@@ -43,7 +44,7 @@ def get_heat(circuit, r_mat, dv_mat, scale):
     return size_up(torch.sum(dv_mat * dv_mat, axis=3)/(r_mat * 4), scale), simulator, volt_matrix
 
 
-def add_head(mat_t, r_heat, hstate, startx, starty, x, y, z):
+def add_heat(mat_t, r_heat, hstate, startx, starty, x, y, z):
     endx = startx + x
     endy = starty + y
 
@@ -75,6 +76,9 @@ def update_resistors(circuit, r_mat, nodes, contact_length):
     Y_LEN = nodes.shape[1]
     Z_LEN = nodes.shape[2]
     c = 0
+
+    if not isinstance(r_mat, np.ndarray):
+        r_mat = r_mat.numpy()
 
     # Set resistors for main array IJK
     for i in range(X_LEN-1):
@@ -143,6 +147,9 @@ def setup_resistors(circuit, r_mat, nodes, contact_length):
     Y_LEN = nodes.shape[1]
     Z_LEN = nodes.shape[2]
     c = 0
+
+    if not isinstance(r_mat, np.ndarray):
+        r_mat = r_mat.numpy()
 
     # Set resistors for main array IJK
     for i in range(X_LEN-1):
@@ -218,7 +225,7 @@ def setup_resistors(circuit, r_mat, nodes, contact_length):
 
 
 def get_node(nodes, i, j, k):
-    return str(nodes[i, j, k, 0]) + "/" + str(nodes[i, j, k, 1]) + "/" + str(nodes[i, j, k, 2])
+    return str(float(nodes[i, j, k, 0])) + "/" + str(float(nodes[i, j, k, 1])) + "/" + str(float(nodes[i, j, k, 2]))
 
 #  +------------------------------------------------+
 #  |                Helper Functions                |
@@ -260,7 +267,7 @@ def get_res_matrix(mat_t, L, STARTX, STARTY, X_ESIM, Y_ESIM, Z_ESIM, S):
 
 def get_resistivity(M):
     r_mat = (9.225e-11) * M**5 + (-1.665e-7) * M**4 + (0.0001994) * M**3 + (-0.04253) * M**2 + (7.511) * M + (-525.9)
-    return torch.maximum(r_mat, torch.zeros(M.shape))
+    return torch.maximum(r_mat, torch.zeros(M.shape)).numpy()
 
 
 
