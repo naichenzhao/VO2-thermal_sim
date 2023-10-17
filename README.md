@@ -1,6 +1,6 @@
 # VO2 Thermal Sim
 
-The program was used  to simulate the thermal perofrmance of Vanadium Dioxide. Results from the simulation have been published in a paper as seen here: https://pubs.acs.org/doi/full/10.1021/acs.nanolett.3c02251
+The program was used  to simulate the thermal perofrmance of Vanadium Dioxide. Results from the simulation have been published in a paper as seen here: https://pubs.acs.org/doi/abs/10.1021/acs.nanolett.3c02681
 
 
 
